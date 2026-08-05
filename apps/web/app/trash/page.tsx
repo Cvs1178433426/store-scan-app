@@ -32,7 +32,6 @@ export default function TrashPage() {
 
   useEffect(() => {
     if (user) refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   async function handleRestore(id: string) {

@@ -26,12 +26,20 @@ updates:
         patterns:
           - "*"
 
+  # Docker는 태그만 따라가므로 LTS가 아닌 Current(홀수)로 major가 올라갈 수 있다.
+  # major(예: 24→25)는 수동 판단; minor/patch(보안·버그픽스)만 자동 제안.
   - package-ecosystem: docker
     directory: "/apps/api"
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: docker
     directory: "/apps/web"
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]

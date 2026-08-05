@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiFetch, apiJson } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
@@ -230,7 +231,7 @@ export default function ItemsPage() {
           <button type="button" className="secondary" onClick={toggleSelectMode}>
             {selectMode ? t("exitSelectionButton") : t("selectItemsButton")}
           </button>
-          <a href="/items/new"><button>{t("registerManually")}</button></a>
+          <Link href="/items/new"><button type="button">{t("registerManually")}</button></Link>
         </div>
       </div>
 

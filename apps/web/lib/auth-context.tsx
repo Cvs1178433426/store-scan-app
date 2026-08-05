@@ -52,7 +52,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     fetchMe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // PWA/탭을 24h 넘게 리로드 없이 열어두면 미디어 쿠키만 만료되어 사진이 깨진다.
@@ -65,7 +64,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function login(token: string) {

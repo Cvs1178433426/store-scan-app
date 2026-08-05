@@ -65,10 +65,10 @@ describe("apiJson", () => {
 
   it("throws an ApiError carrying the status and string error message", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(409, { error: "이미 등록된 바코드" })));
-    const err = await apiJson("/api/items").catch((e) => e);
+    const err = await apiJson("/api/items").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
-    expect(err.status).toBe(409);
-    expect(err.message).toBe("이미 등록된 바코드");
+    expect((err as ApiError).status).toBe(409);
+    expect((err as ApiError).message).toBe("이미 등록된 바코드");
   });
 
   it("stringifies a structured (zod) error body", async () => {
@@ -76,8 +76,8 @@ describe("apiJson", () => {
       "fetch",
       vi.fn().mockResolvedValue(jsonResponse(400, { error: { fieldErrors: { name: ["Required"] } } })),
     );
-    const err = await apiJson("/api/items").catch((e) => e);
+    const err = await apiJson("/api/items").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
-    expect(err.message).toContain("Required");
+    expect((err as ApiError).message).toContain("Required");
   });
 });

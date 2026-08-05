@@ -27,7 +27,6 @@ export default function LocationsPage() {
 
   useEffect(() => {
     if (user) refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   async function handleSubmit(e: FormEvent) {
