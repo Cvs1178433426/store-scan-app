@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import {
   barcodeSymbologySchema,
   computeFreshnessRatio,
+  computeQualityXp,
   freshnessPercent,
   guessSymbology,
   itemBulkDeleteSchema,
@@ -10,6 +11,8 @@ import {
   itemUpdateSchema,
   quantityAdjustSchema,
   scanInputSchema,
+  type QualityXpItem,
+  type XpAward,
 } from "@stash/shared";
 import { prisma } from "../lib/prisma.js";
 import { resolveProduct } from "../lib/barcodeLookup/index.js";
@@ -24,6 +27,38 @@ const ITEM_INCLUDE = {
   location: true,
   category: true,
 } as const;
+
+function toQualityXpItem(item: {
+  itemType: "CONSUMABLE" | "ASSET";
+  locationId: string | null;
+  categoryId: string | null;
+  photoUrl: string | null;
+  price: number | null;
+  minQuantity: number | null;
+  expiryDate: Date | null;
+  warrantyExpiresAt: Date | null;
+  barcodes?: { source: "GENERATED" | "EXISTING" | "MATTER" | "SERIAL" }[];
+}): QualityXpItem {
+  return {
+    itemType: item.itemType,
+    locationId: item.locationId,
+    categoryId: item.categoryId,
+    photoUrl: item.photoUrl,
+    price: item.price,
+    minQuantity: item.minQuantity,
+    expiryDate: item.expiryDate,
+    warrantyExpiresAt: item.warrantyExpiresAt,
+    barcodes: item.barcodes,
+  };
+}
+
+/** 토스트용 — 품질 XP는 DB에 쓰지 않고 파생 점수/델타만 돌려준다. */
+function qualityXpToast(
+  item: Parameters<typeof toQualityXpItem>[0],
+  previous?: Parameters<typeof toQualityXpItem>[0] | null,
+): XpAward {
+  return computeQualityXp(toQualityXpItem(item), previous ? toQualityXpItem(previous) : null);
+}
 
 const CSV_COLUMNS = [
   "name",
@@ -378,7 +413,8 @@ export async function itemRoutes(app: FastifyInstance) {
 
     const created = await prisma.item.findUnique({ where: { id: item.id }, include: ITEM_INCLUDE });
     if (created) void fireInventoryWebhook("item.updated", created);
-    return reply.code(201).send(created);
+    const xp = created ? qualityXpToast(created) : { total: 0, breakdown: [] };
+    return reply.code(201).send({ ...created, xp });
   });
 
   // 목록에서 여러 아이템을 골라 위치/카테고리를 한 번에 바꾼다. locationId/categoryId를
@@ -413,6 +449,9 @@ export async function itemRoutes(app: FastifyInstance) {
     const parsed = itemUpdateSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
 
+    const before = await prisma.item.findUnique({ where: { id }, include: ITEM_INCLUDE });
+    if (!before) return reply.code(404).send({ error: t("itemNotFound", request.locale) });
+
     const { purchaseDate, expiryDate, warrantyExpiresAt, ...rest } = parsed.data;
     const data: Record<string, unknown> = {
       ...rest,
@@ -437,11 +476,8 @@ export async function itemRoutes(app: FastifyInstance) {
     }
     // 손으로 수량을 고친 것도 "확인"으로 친다 — 스캔만 lastAuditedAt을 갱신하면
     // 상세에서 맞춘 재고가 신선도에서 계속 낡아 보인다. 수량이 실제로 바뀔 때만.
-    if (typeof rest.quantity === "number") {
-      const before = await prisma.item.findUnique({ where: { id }, select: { quantity: true } });
-      if (before && before.quantity !== rest.quantity) {
-        data.lastAuditedAt = new Date();
-      }
+    if (typeof rest.quantity === "number" && before.quantity !== rest.quantity) {
+      data.lastAuditedAt = new Date();
     }
 
     const item = await prisma.item.update({
@@ -453,7 +489,8 @@ export async function itemRoutes(app: FastifyInstance) {
       include: { ...ITEM_INCLUDE, attachments: true },
     });
     void fireInventoryWebhook("item.updated", item);
-    return item;
+    const xp = qualityXpToast(item, before);
+    return { ...item, xp };
   });
 
   // 소프트 삭제 — 목록/스캔에서 즉시 안 보이게만 하고, 실수로 지운 걸 휴지통에서
@@ -654,6 +691,8 @@ export async function itemRoutes(app: FastifyInstance) {
     });
     void fireInventoryWebhook("item.updated", item);
 
-    return reply.code(201).send({ item, matched: false, created: true, lookup });
+    // 품질 XP는 파생 점수 — Setting에 쓰지 않는다. 토스트용 델타/점수만 응답.
+    const xp = qualityXpToast(item);
+    return reply.code(201).send({ item, matched: false, created: true, lookup, xp });
   });
 }
