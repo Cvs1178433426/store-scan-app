@@ -2,18 +2,19 @@
 
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { BrowserCodeReader, BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
-import { BarcodeFormat } from "@zxing/library";
 import { API_URL, apiFetch, apiJson } from "../../../lib/api";
 import { photoUrlFromFilePath, photoUrlMatches, resolvePhotoUrl } from "../../../lib/media";
 import { useAuth } from "../../../lib/auth-context";
 import { useToast } from "../../../lib/toast-context";
 import { useLocale } from "../../../lib/i18n/locale-context";
 import { playBeep, unlockBeepAudio } from "../../../lib/beep";
-import { SCAN_HINTS, SCAN_VIDEO_CONSTRAINTS, symbologyFromScanFormat } from "../../../lib/barcodeScanner";
+import { SCAN_VIDEO_CONSTRAINTS, symbologyFromScanFormat, isQrScanFormat, createScanHints } from "../../../lib/barcodeScanner";
 import { TorchButton } from "../../../components/TorchButton";
 import type { TranslationKey } from "../../../lib/i18n/translations";
 import type { Item, ItemCondition, Location, Category, MaintenanceRecord, StockMovementReason } from "../../../lib/types";
+
+/** @zxing/browser IScannerControls — 타입만 필요해서 패키지를 정적 import하지 않는다. */
+type ScannerControls = { stop: () => void; switchTorch?: (on: boolean) => Promise<void> };
 
 const REASON_KEY: Record<StockMovementReason, TranslationKey> = {
   RESTOCK: "reasonRestock",
@@ -59,14 +60,14 @@ export default function ItemDetailPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [busy, setBusy] = useState(true);
   const [manualBarcode, setManualBarcode] = useState("");
-  const [scannedFormat, setScannedFormat] = useState<BarcodeFormat | null>(null);
+  const [scannedFormat, setScannedFormat] = useState<number | null>(null);
   const [showAddBarcode, setShowAddBarcode] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const controlsRef = useRef<IScannerControls | null>(null);
+  const controlsRef = useRef<ScannerControls | null>(null);
   const [maintDate, setMaintDate] = useState("");
   const [maintDescription, setMaintDescription] = useState("");
   const [maintCost, setMaintCost] = useState("");
@@ -78,30 +79,46 @@ export default function ItemDetailPage() {
 
   // 기존 바코드/Matter 페어링 코드 둘 다 박스나 기기에 QR로 찍혀있는 경우가 많아서, 손으로
   // 타이핑하는 대신 카메라로 스캔해 입력란만 채울 수 있게 한다(등록 자체는 아래 버튼으로).
+  // zxing은 스캔 UI를 열 때만 로드 — 상세 First Load에서 스캐너 번들을 빼기 위함.
   useEffect(() => {
     if (!scanning || !videoRef.current) return;
-    const reader = new BrowserMultiFormatReader(SCAN_HINTS);
     let cancelled = false;
 
-    reader
-      .decodeFromConstraints({ video: SCAN_VIDEO_CONSTRAINTS }, videoRef.current, (result) => {
-        if (cancelled || !result) return;
-        playBeep();
-        setManualBarcode(result.getText());
-        setScannedFormat(result.getBarcodeFormat());
-        setScanning(false);
-      })
-      .then((controls) => {
+    void (async () => {
+      const [{ BrowserCodeReader, BrowserMultiFormatReader }, hints] = await Promise.all([
+        import("@zxing/browser"),
+        createScanHints(),
+      ]);
+      if (cancelled || !videoRef.current) return;
+      const reader = new BrowserMultiFormatReader(hints);
+      try {
+        const controls = await reader.decodeFromConstraints(
+          { video: SCAN_VIDEO_CONSTRAINTS },
+          videoRef.current,
+          (result) => {
+            if (cancelled || !result) return;
+            playBeep();
+            setManualBarcode(result.getText());
+            setScannedFormat(result.getBarcodeFormat());
+            setScanning(false);
+          },
+        );
+        if (cancelled) {
+          controls.stop();
+          return;
+        }
         controlsRef.current = controls;
         const stream = videoRef.current?.srcObject;
         if (stream instanceof MediaStream) {
           setTorchSupported(BrowserCodeReader.mediaStreamIsTorchCompatible(stream));
         }
-      })
-      .catch(() => {
-        setScanError(t("cameraError"));
-        setScanning(false);
-      });
+      } catch {
+        if (!cancelled) {
+          setScanError(t("cameraError"));
+          setScanning(false);
+        }
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -196,7 +213,7 @@ export default function ItemDetailPage() {
   // 적용한다 — 소모품에서 QR을 스캔한 경우는 그냥 기존 바코드로 저장한다.
   async function addBarcode() {
     if (!item || !manualBarcode.trim()) return;
-    const isMatter = scannedFormat === BarcodeFormat.QR_CODE && item.itemType === "ASSET";
+    const isMatter = scannedFormat != null && isQrScanFormat(scannedFormat) && item.itemType === "ASSET";
     try {
       await apiJson(`/api/items/${item.id}/barcodes`, {
         method: "POST",
@@ -348,7 +365,10 @@ export default function ItemDetailPage() {
         onClick: async () => {
           try {
             await apiJson(`/api/items/${id}/restore`, { method: "POST" });
-            window.location.href = "/items";
+            // 목록은 클라이언트 state라 soft nav만으로는 stale하다.
+            sessionStorage.setItem("stash_items_needs_refresh", "1");
+            window.dispatchEvent(new Event("stash-items-refresh"));
+            router.push("/items");
           } catch (err: any) {
             show(t("restoreFailToast", { msg: err.message }), "error");
           }

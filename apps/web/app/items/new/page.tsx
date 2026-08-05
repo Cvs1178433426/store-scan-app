@@ -2,8 +2,6 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { BrowserCodeReader, BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
-import { BarcodeFormat } from "@zxing/library";
 import { apiFetch, apiJson } from "../../../lib/api";
 import { photoUrlFromFilePath } from "../../../lib/media";
 import { useAuth } from "../../../lib/auth-context";
@@ -12,9 +10,12 @@ import { useLocale } from "../../../lib/i18n/locale-context";
 import { RECENT_CATEGORIES_KEY, RECENT_LOCATIONS_KEY, loadRecentIds, pushRecentId } from "../../../lib/recentSelections";
 import { loadDefaultCurrency } from "../../../lib/currency";
 import { playBeep, unlockBeepAudio } from "../../../lib/beep";
-import { SCAN_HINTS, SCAN_VIDEO_CONSTRAINTS, symbologyFromScanFormat } from "../../../lib/barcodeScanner";
+import { SCAN_VIDEO_CONSTRAINTS, symbologyFromScanFormat, isQrScanFormat, createScanHints } from "../../../lib/barcodeScanner";
 import { TorchButton } from "../../../components/TorchButton";
 import type { Item, ItemCondition, ItemType, Location, Category } from "../../../lib/types";
+
+/** @zxing/browser IScannerControls — 타입만 필요해서 패키지를 정적 import하지 않는다. */
+type ScannerControls = { stop: () => void; switchTorch?: (on: boolean) => Promise<void> };
 
 // 바코드 없는 물건 등록 폼 — 필수 입력은 이름뿐이고 나머지는 전부 선택값으로 두어
 // 나중에 채워도 되게 한다 (입력 마찰 최소화).
@@ -34,7 +35,7 @@ export default function NewItemPage() {
   const [locationId, setLocationId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [barcodeValue, setBarcodeValue] = useState("");
-  const [scannedFormat, setScannedFormat] = useState<BarcodeFormat | null>(null);
+  const [scannedFormat, setScannedFormat] = useState<number | null>(null);
   const [expiryDate, setExpiryDate] = useState("");
   const [warrantyExpiresAt, setWarrantyExpiresAt] = useState("");
   const [price, setPrice] = useState("");
@@ -49,7 +50,7 @@ export default function NewItemPage() {
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const controlsRef = useRef<IScannerControls | null>(null);
+  const controlsRef = useRef<ScannerControls | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -63,30 +64,46 @@ export default function NewItemPage() {
 
   // 바코드가 있는 상품이라도 위치·카테고리·가격을 먼저 채워서 등록하고 싶을 때를 위한
   // 카메라 스캔 — /scan과 달리 여기서는 값만 입력란에 채우고 등록은 사용자가 직접 누른다.
+  // zxing은 스캔 UI를 열 때만 로드한다.
   useEffect(() => {
     if (!scanning || !videoRef.current) return;
-    const reader = new BrowserMultiFormatReader(SCAN_HINTS);
     let cancelled = false;
 
-    reader
-      .decodeFromConstraints({ video: SCAN_VIDEO_CONSTRAINTS }, videoRef.current, (result) => {
-        if (cancelled || !result) return;
-        playBeep();
-        setBarcodeValue(result.getText());
-        setScannedFormat(result.getBarcodeFormat());
-        setScanning(false);
-      })
-      .then((controls) => {
+    void (async () => {
+      const [{ BrowserCodeReader, BrowserMultiFormatReader }, hints] = await Promise.all([
+        import("@zxing/browser"),
+        createScanHints(),
+      ]);
+      if (cancelled || !videoRef.current) return;
+      const reader = new BrowserMultiFormatReader(hints);
+      try {
+        const controls = await reader.decodeFromConstraints(
+          { video: SCAN_VIDEO_CONSTRAINTS },
+          videoRef.current,
+          (result) => {
+            if (cancelled || !result) return;
+            playBeep();
+            setBarcodeValue(result.getText());
+            setScannedFormat(result.getBarcodeFormat());
+            setScanning(false);
+          },
+        );
+        if (cancelled) {
+          controls.stop();
+          return;
+        }
         controlsRef.current = controls;
         const stream = videoRef.current?.srcObject;
         if (stream instanceof MediaStream) {
           setTorchSupported(BrowserCodeReader.mediaStreamIsTorchCompatible(stream));
         }
-      })
-      .catch(() => {
-        setScanError(t("cameraError"));
-        setScanning(false);
-      });
+      } catch {
+        if (!cancelled) {
+          setScanError(t("cameraError"));
+          setScanning(false);
+        }
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -144,7 +161,7 @@ export default function NewItemPage() {
       // 같은 원칙으로, 자산을 등록하며 Matter QR을 스캔했을 때만 MATTER로 태깅하고
       // 심볼로지도 스캔 포맷 그대로 보낸다. 스캔 없이 손으로 입력했다면 서버가 값
       // 모양으로 심볼로지를 추측하도록 아예 보내지 않는다.
-      const isMatter = scannedFormat === BarcodeFormat.QR_CODE && itemType === "ASSET";
+      const isMatter = scannedFormat != null && isQrScanFormat(scannedFormat) && itemType === "ASSET";
       const item = await apiJson<Item>("/api/items", {
         method: "POST",
         body: JSON.stringify({

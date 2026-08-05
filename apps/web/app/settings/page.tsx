@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, apiJson } from "../../lib/api";
+import { apiFetch, apiJson, API_URL } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 import { useToast } from "../../lib/toast-context";
 import { useLocale } from "../../lib/i18n/locale-context";
@@ -10,10 +10,12 @@ import { PushNotificationSettings } from "../../components/PushNotificationSetti
 import { ThemeToggle } from "../../components/ThemeToggle";
 import { LanguageToggle } from "../../components/LanguageToggle";
 import { CurrencyToggle } from "../../components/CurrencyToggle";
-import { downloadBlob, todayStamp } from "../../lib/download";
+import { todayStamp } from "../../lib/download";
+import { OneTimeSecrets, type OneTimeSecret } from "../../components/OneTimeSecrets";
+
 export default function SettingsPage() {
   const router = useRouter();
-  const { user, loading, isAdmin, logout } = useAuth();
+  const { user, loading, isAdmin, logout, logoutAll } = useAuth();
   const { show } = useToast();
   const { t } = useLocale();
   const [restoring, setRestoring] = useState(false);
@@ -22,6 +24,7 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
+  const [recoverySecrets, setRecoverySecrets] = useState<OneTimeSecret[] | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -55,9 +58,17 @@ export default function SettingsPage() {
   async function handleExport() {
     setExporting(true);
     try {
-      const res = await apiFetch("/api/backup/export");
-      if (!res.ok) throw new Error(t("exportFailFallback"));
-      await downloadBlob(res, `stash_backup_${todayStamp()}.tar.gz`);
+      // 티켓 → location 스트리밍. blob()은 uploads 전체 tar를 메모리에 올려 모바일에서 탭이 죽는다.
+      const { ticket } = await apiJson<{ ticket: string }>("/api/backup/export-ticket", { method: "POST" });
+      // API로 스트리밍 다운로드 — Next 페이지 이동이 아니라서 <a> navigate를 쓴다
+      // (location.href는 same-origin일 때 lint에 걸린다).
+      const a = document.createElement("a");
+      a.href = `${API_URL}/api/backup/export?ticket=${encodeURIComponent(ticket)}`;
+      a.target = "_blank";
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
     } catch (err: any) {
       show(err.message, "error");
     } finally {
@@ -81,10 +92,12 @@ export default function SettingsPage() {
         | { email: string; role?: string; temporaryPassword: string }[]
         | undefined;
       if (recoveries?.length) {
-        const lines = recoveries
-          .map((r) => `${r.email}${r.role ? ` (${r.role})` : ""}: ${r.temporaryPassword}`)
-          .join("\n");
-        window.alert(t("restoreRecoveryAlert", { lines }));
+        setRecoverySecrets(
+          recoveries.map((r) => ({
+            label: `${r.email}${r.role ? ` (${r.role})` : ""}`,
+            value: r.temporaryPassword,
+          })),
+        );
       }
       show(t("restoreSuccessToast"), "success");
     } catch (err: any) {
@@ -103,7 +116,21 @@ export default function SettingsPage() {
       <div className="card">
         <h2 style={{ marginTop: 0 }}>{t("myAccountTitle")}</h2>
         <p className="meta">{user.name} ({user.email}) · {user.role === "ADMIN" ? t("roleAdmin") : t("roleGeneral")}</p>
-        <button className="secondary" onClick={logout}>{t("logoutButton")}</button>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <button type="button" className="secondary" onClick={() => void logout()}>
+            {t("logoutButton")}
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              if (!confirm(t("confirmLogoutAll"))) return;
+              void logoutAll();
+            }}
+          >
+            {t("logoutAllButton")}
+          </button>
+        </div>
 
         <h3 style={{ marginBottom: 8 }}>{t("changePasswordTitle")}</h3>
         <form onSubmit={handleChangePassword} className="form">
@@ -166,6 +193,16 @@ export default function SettingsPage() {
             </label>
           </div>
         </div>
+      )}
+
+      {recoverySecrets && (
+        <OneTimeSecrets
+          title={t("restoreRecoveryTitle")}
+          hint={t("restoreRecoveryHint")}
+          secrets={recoverySecrets}
+          downloadFilename={`stash-restore-passwords_${todayStamp()}.txt`}
+          onClose={() => setRecoverySecrets(null)}
+        />
       )}
     </main>
   );
