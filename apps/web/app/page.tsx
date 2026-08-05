@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiJson } from "../lib/api";
 import { useAuth } from "../lib/auth-context";
@@ -84,7 +85,7 @@ export default function DashboardPage() {
     <main className="container">
       <div className="page-header">
         <h1>{t("dashboardTitle")}</h1>
-        <a href="/scan"><button>{t("scanButton")}</button></a>
+        <Link href="/scan"><button type="button">{t("scanButton")}</button></Link>
       </div>
 
       {stats && Object.keys(stats.totalValueByCurrency).length > 0 && (
@@ -113,7 +114,7 @@ export default function DashboardPage() {
                 <strong>{t("onboardStep1Title")}</strong>
                 <p className="meta" style={{ margin: 0 }}>{t("onboardStep1Hint")}</p>
               </div>
-              <a href="/locations"><button className="secondary">{t("manageLocations")}</button></a>
+              <Link href="/locations"><button type="button" className="secondary">{t("manageLocations")}</button></Link>
             </div>
             <div className="onboarding-step">
               <span className={`onboarding-check${pushStatus.subscribed ? " done" : ""}`}>
@@ -125,7 +126,7 @@ export default function DashboardPage() {
                   {pushStatus.configured ? t("onboardStep2Hint") : t("onboardStep2NotConfiguredHint")}
                 </p>
               </div>
-              <a href="/settings"><button className="secondary">{t("notificationsTitle")}</button></a>
+              <Link href="/settings"><button type="button" className="secondary">{t("notificationsTitle")}</button></Link>
             </div>
             {isAdmin && (
               <div className="onboarding-step">
@@ -136,11 +137,11 @@ export default function DashboardPage() {
                   <strong>{t("onboardStep3Title")}</strong>
                   <p className="meta" style={{ margin: 0 }}>{t("onboardStep3Hint")}</p>
                 </div>
-                <a href="/settings/integrations"><button className="secondary">{t("integrationSettings")}</button></a>
+                <Link href="/settings/integrations"><button type="button" className="secondary">{t("integrationSettings")}</button></Link>
               </div>
             )}
           </div>
-          <a href="/scan"><button style={{ width: "100%", marginTop: 12 }}>{t("scanButton")}</button></a>
+          <Link href="/scan"><button type="button" style={{ width: "100%", marginTop: 12 }}>{t("scanButton")}</button></Link>
         </div>
       )}
 
@@ -152,7 +153,7 @@ export default function DashboardPage() {
         <section className="dashboard-section">
           <div className="page-header" style={{ marginBottom: 8 }}>
             <h2 style={{ margin: 0 }}>{t("lowStockSection")} ({lowStock.length})</h2>
-            <a href="/shopping"><button className="secondary">{t("shoppingListLink")}</button></a>
+            <Link href="/shopping"><button type="button" className="secondary">{t("shoppingListLink")}</button></Link>
           </div>
           {lowStock.map((item) => (
             <ItemCard

@@ -30,7 +30,7 @@ export default function UsersPage() {
 
   useEffect(() => {
     if (isAdmin) refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [isAdmin]);
 
   async function handleSubmit(e: FormEvent) {

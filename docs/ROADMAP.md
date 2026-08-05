@@ -58,4 +58,4 @@ Decisions and tradeoffs for the hardening pass (ordered by impact):
 - **Backup omits passwordHash (P1).** Restore fills random hashes and returns one-time passwords for **all** users without a hash (not just ADMIN — there is no admin-reset-other-user route). Legacy backups that still include hashes restore as before.
 - **Webhook HMAC (P1).** Optional `INVENTORY_WEBHOOK_SECRET` → `X-Stash-Timestamp` + `X-Stash-Signature: sha256=<hex>` over `"<ts>.<raw body>"`. Unset = previous unsigned behavior.
 - **Relative photoUrl (P2).** Stored as `/api/attachments/file/<file>`; migration strips host prefixes. Rendering prepends `API_URL`. Avoids domain-change breakage and keeps cookie auth compatible with existing rows.
-- **Dependabot + `npm audit` in CI (P2).** Audit step is `continue-on-error: true` until existing advisories are triaged.
+- **Dependabot + `npm audit` in CI (P2).** `npm audit --audit-level=high` is enforced in CI (no `continue-on-error`). Stack bumped to Fastify 5 / `@fastify/jwt` 10 / Next.js 16 / sharp 0.35 so the audit is clean; ESLint uses the flat config CLI (`eslint .`) because `next lint` was removed in Next 16.

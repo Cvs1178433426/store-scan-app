@@ -67,7 +67,7 @@ export default function IntegrationsPage() {
       refresh();
       refreshPushConfig();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [isAdmin]);
 
   async function handleGenerateVapid() {
