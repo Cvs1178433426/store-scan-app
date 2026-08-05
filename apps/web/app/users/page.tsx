@@ -30,7 +30,6 @@ export default function UsersPage() {
 
   useEffect(() => {
     if (isAdmin) refresh();
-     
   }, [isAdmin]);
 
   async function handleSubmit(e: FormEvent) {

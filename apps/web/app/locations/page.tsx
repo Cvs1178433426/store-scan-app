@@ -27,7 +27,6 @@ export default function LocationsPage() {
 
   useEffect(() => {
     if (user) refresh();
-     
   }, [user]);
 
   async function handleSubmit(e: FormEvent) {

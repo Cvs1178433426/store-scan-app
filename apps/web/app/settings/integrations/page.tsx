@@ -67,7 +67,6 @@ export default function IntegrationsPage() {
       refresh();
       refreshPushConfig();
     }
-     
   }, [isAdmin]);
 
   async function handleGenerateVapid() {

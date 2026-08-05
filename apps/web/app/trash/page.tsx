@@ -32,7 +32,6 @@ export default function TrashPage() {
 
   useEffect(() => {
     if (user) refresh();
-     
   }, [user]);
 
   async function handleRestore(id: string) {
