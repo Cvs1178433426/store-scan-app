@@ -156,6 +156,18 @@ function AuditIcon({ size = 24 }: { size?: number }) {
   );
 }
 
+function InsightsIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg {...iconProps()} width={size} height={size}>
+      <path d="M4 19V5" />
+      <path d="M4 19h16" />
+      <path d="M8 15v-4" />
+      <path d="M12 15V8" />
+      <path d="M16 15v-6" />
+    </svg>
+  );
+}
+
 const TABS: { href: string; labelKey: TranslationKey; Icon: () => JSX.Element; primary?: boolean }[] = [
   { href: "/", labelKey: "navHome", Icon: HomeIcon },
   { href: "/items", labelKey: "navItems", Icon: BoxIcon },
@@ -253,6 +265,9 @@ export function BottomNav() {
               <button type="button" className="sheet-item" onClick={() => go("/history")}>
                 <HistoryIcon size={20} /> {t("historyTitle")}
               </button>
+              <button type="button" className="sheet-item" onClick={() => go("/insights")}>
+                <InsightsIcon size={20} /> {t("insightsNavLabel")}
+              </button>
               <button type="button" className="sheet-item" onClick={() => go("/labels")}>
                 <LabelIcon size={20} /> {t("printLabels")}
               </button>
@@ -276,6 +291,18 @@ export function BottomNav() {
                   <IntegrationIcon size={20} /> {t("integrationSettings")}
                 </button>
               )}
+            </div>
+
+            <div
+              style={{
+                fontSize: 12,
+                color: "var(--color-text-muted)",
+                marginTop: 12,
+                paddingTop: 12,
+                borderTop: "1px solid var(--color-border)",
+              }}
+            >
+              v{process.env.APP_VERSION}
             </div>
           </div>
         </div>
