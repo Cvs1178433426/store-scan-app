@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactElement, type SVGProps } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import type { SVGProps } from "react";
 import { useAuth } from "../lib/auth-context";
 import { useLocale } from "../lib/i18n/locale-context";
 import type { TranslationKey } from "../lib/i18n/translations";
@@ -168,7 +167,7 @@ function InsightsIcon({ size = 24 }: { size?: number }) {
   );
 }
 
-const TABS: { href: string; labelKey: TranslationKey; Icon: () => JSX.Element; primary?: boolean }[] = [
+const TABS: { href: string; labelKey: TranslationKey; Icon: () => ReactElement; primary?: boolean }[] = [
   { href: "/", labelKey: "navHome", Icon: HomeIcon },
   { href: "/items", labelKey: "navItems", Icon: BoxIcon },
   { href: "/scan", labelKey: "navScan", Icon: CameraIcon, primary: true },
