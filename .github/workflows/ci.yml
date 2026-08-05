@@ -45,6 +45,9 @@ jobs:
         run: npm ci
 
       - name: Run Prisma Generate
+        # generate는 DB에 안 붙지만 prisma.config.ts의 env("DATABASE_URL")이 값을 요구한다.
+        env:
+          DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
         run: npm run prisma:generate -w apps/api
 
       - name: Run Build
@@ -66,6 +69,8 @@ jobs:
         run: npm ci
 
       - name: Run Prisma Generate
+        env:
+          DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
         run: npm run prisma:generate -w apps/api
 
       - name: Run Tests

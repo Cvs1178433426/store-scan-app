@@ -11,7 +11,7 @@
 
 Self-hosted home inventory for a household that works by **labels and a scanner**: put a barcode or QR on a thing, scan to restock or consume, and when stock changes an optional webhook updates a printer or Home Assistant label. Track low stock and expiry from the dashboard without turning Stash into a meal planner.
 
-> Current release: **v0.7.1**
+> Current release: **v0.7.2**
 
 Docs: [`docs/ROADMAP.md`](./docs/ROADMAP.md)
 

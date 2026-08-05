@@ -1,28 +1,12 @@
-import { config as loadEnv } from "dotenv";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { defineConfig } from "prisma/config";
-
-// monorepo: apps/api/.env 또는 루트 .env
-const here = dirname(fileURLToPath(import.meta.url));
-loadEnv({ path: resolve(here, ".env"), quiet: true });
-loadEnv({ path: resolve(here, "../../.env"), quiet: true });
-
-// generate만 DB에 붙지 않으므로 CI에서 DATABASE_URL 없이 더미로 통과시킨다.
-// migrate deploy / db push 등이 같은 폴백을 타면 localhost로 조용히 실패하므로 막는다.
-const argv = process.argv.join(" ");
-const isGenerateOnly = /\bgenerate\b/.test(argv) && !/\b(migrate|db|studio|validate)\b/.test(argv);
-
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
-  if (!isGenerateOnly) {
-    throw new Error(
-      "DATABASE_URL is required for this Prisma command (dummy fallback is only allowed for `prisma generate`)",
-    );
-  }
-}
+import { defineConfig, env } from "prisma/config";
 
 // Prisma 7: datasource URL은 schema.prisma가 아니라 여기로 옮긴다.
+// Docker/프로덕션 migrate deploy가 이 파일을 읽어야 하므로, garage와 같이
+// prisma/config의 env()로 DATABASE_URL을 넘긴다 (process.env 직접 참조는
+// config 로더에 따라 url이 비어 "datasource.url required"로 터질 수 있음).
+//
+// generate만 DB에 안 붙는다 — CI/Docker 빌드에서는 DATABASE_URL 더미를 환경에 넣고 돌린다
+// (apps/api/Dockerfile, .github/workflows/ci.yml). migrate는 실제 URL 필수.
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
@@ -30,6 +14,6 @@ export default defineConfig({
     seed: "tsx --env-file=../../.env prisma/seed.ts",
   },
   datasource: {
-    url: databaseUrl ?? "postgresql://stash:stash@localhost:5433/stash",
+    url: env("DATABASE_URL"),
   },
 });

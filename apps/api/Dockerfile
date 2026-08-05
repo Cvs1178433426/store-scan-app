@@ -12,7 +12,8 @@ RUN npm install
 FROM deps AS build
 COPY . .
 RUN npm run build -w packages/shared
-RUN npm run prisma:generate -w apps/api
+# prisma generate는 DB에 접속하지 않지만 prisma.config.ts가 DATABASE_URL을 요구하므로 더미 값을 준다.
+RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npm run prisma:generate -w apps/api
 RUN npm run build -w apps/api
 
 FROM base AS runner
