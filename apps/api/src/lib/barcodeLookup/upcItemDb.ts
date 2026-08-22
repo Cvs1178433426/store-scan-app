@@ -1,8 +1,11 @@
 import { getSetting } from "../settings.js";
 import type { ProductLookupProvider, ProductLookupResult } from "./types.js";
 
-// 식료품 외 일반 소매 제품 커버리지가 넓다. 무료 티어는 키 없이도 동작하지만
-// 요청량이 많아지면 관리자가 Setting에서 API 키를 등록해 쓸 수 있게 열어둔다.
+function normalizeDescription(item: any): string | undefined {
+  const value = item.description || item.title;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
 export const upcItemDbProvider: ProductLookupProvider = {
   name: "upcitemdb",
   async lookup(barcodeValue: string): Promise<ProductLookupResult | null> {
@@ -23,6 +26,9 @@ export const upcItemDbProvider: ProductLookupProvider = {
       found: true,
       name: item.title || undefined,
       brand: item.brand || undefined,
+      description: normalizeDescription(item),
+      size: item.size || undefined,
+      category: item.category || undefined,
       imageUrl: item.images?.[0] || undefined,
       provider: "upcitemdb",
       raw: item,
