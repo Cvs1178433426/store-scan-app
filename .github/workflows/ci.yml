@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, chatgpt-development]
   pull_request:
-    branches: [master]
+    branches: [master, chatgpt-development]
 
 jobs:
   lint:
@@ -45,7 +45,6 @@ jobs:
         run: npm ci
 
       - name: Run Prisma Generate
-        # generate는 DB에 안 붙지만 prisma.config.ts의 env("DATABASE_URL")이 값을 요구한다.
         env:
           DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
         run: npm run prisma:generate -w apps/api
