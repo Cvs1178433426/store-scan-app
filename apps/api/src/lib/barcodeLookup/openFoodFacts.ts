@@ -1,6 +1,5 @@
 import type { ProductLookupProvider, ProductLookupResult } from "./types.js";
 
-// 키 없이 쓸 수 있는 오픈 데이터베이스 — 식료품 위주로 커버리지가 좋다.
 export const openFoodFactsProvider: ProductLookupProvider = {
   name: "openfoodfacts",
   async lookup(barcodeValue: string): Promise<ProductLookupResult | null> {
@@ -14,8 +13,11 @@ export const openFoodFactsProvider: ProductLookupProvider = {
     const product = data.product;
     return {
       found: true,
-      name: product.product_name || product.product_name_ko || undefined,
+      name: product.product_name || product.product_name_en || product.product_name_ko || undefined,
       brand: product.brands || undefined,
+      description: product.generic_name || product.generic_name_en || undefined,
+      size: product.quantity || product.product_quantity_with_unit || undefined,
+      category: product.categories || product.categories_tags?.[0] || undefined,
       imageUrl: product.image_front_url || product.image_url || undefined,
       provider: "openfoodfacts",
       raw: product,
