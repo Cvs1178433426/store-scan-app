@@ -21,6 +21,8 @@ import { auditRoutes } from "./routes/audit.js";
 import { xpRoutes } from "./routes/xp.js";
 import { insightsRoutes } from "./routes/insights.js";
 import { storeCountRoutes } from "./routes/storeCount.js";
+import { storeLocationRoutes } from "./routes/storeLocations.js";
+import { productRoutes } from "./routes/products.js";
 import { startExpiryNotificationJob } from "./jobs/expiryNotifications.js";
 import { startTrashPurgeJob } from "./jobs/trashPurge.js";
 import { startLowStockSummaryJob } from "./jobs/lowStockSummary.js";
@@ -78,7 +80,8 @@ const app = Fastify({
   },
 });
 
-await app.register(cors, { origin: true });
+const configuredOrigin = process.env.APP_PUBLIC_URL?.trim();
+await app.register(cors, { origin: configuredOrigin || true });
 await app.register(cookie);
 await app.register(jwt, { secret: jwtSecret });
 await app.register(multipart, { limits: { fileSize: 20 * 1024 * 1024 } });
@@ -139,6 +142,8 @@ await app.register(itemRoutes, { prefix: "/api/items" });
 await app.register(barcodeRoutes, { prefix: "/api" });
 await app.register(publicBarcodeRoutes, { prefix: "/api/barcodes" });
 await app.register(lookupRoutes, { prefix: "/api/lookup" });
+await app.register(productRoutes, { prefix: "/api/products" });
+await app.register(storeLocationRoutes, { prefix: "/api/store-locations" });
 await app.register(storeCountRoutes, { prefix: "/api/store-count" });
 await app.register(attachmentRoutes, { prefix: "/api/attachments" });
 await app.register(mediaAttachmentRoutes, { prefix: "/api/attachments" });
