@@ -1,0 +1,81 @@
+import type { FastifyInstance } from "fastify";
+import { productInputSchema, productUpdateSchema } from "@stash/shared";
+import { prisma } from "../lib/prisma.js";
+import { isUniqueConstraintError } from "../lib/prismaErrors.js";
+
+export async function productRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", app.authenticate);
+
+  app.get("/", async (request) => {
+    const query = request.query as { q?: string; includeInactive?: string };
+    const includeInactive = query.includeInactive === "true";
+    const q = query.q?.trim();
+
+    return prisma.product.findMany({
+      where: {
+        ...(includeInactive ? {} : { isActive: true }),
+        ...(q
+          ? {
+              OR: [
+                { name: { contains: q, mode: "insensitive" } },
+                { manufacturer: { contains: q, mode: "insensitive" } },
+                { barcodeValue: { contains: q } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: { name: "asc" },
+      include: { category: true },
+    });
+  });
+
+  app.get("/by-barcode/:barcode", async (request, reply) => {
+    const { barcode } = request.params as { barcode: string };
+    const product = await prisma.product.findUnique({ where: { barcodeValue: barcode }, include: { category: true } });
+    if (!product) return reply.code(404).send({ error: "product not found" });
+    return product;
+  });
+
+  app.get("/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const product = await prisma.product.findUnique({ where: { id }, include: { category: true } });
+    if (!product) return reply.code(404).send({ error: "product not found" });
+    return product;
+  });
+
+  app.post("/", async (request, reply) => {
+    const parsed = productInputSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+
+    try {
+      const product = await prisma.product.create({ data: parsed.data });
+      return reply.code(201).send(product);
+    } catch (err) {
+      if (isUniqueConstraintError(err)) {
+        return reply.code(409).send({ error: `A product with barcode "${parsed.data.barcodeValue}" already exists.` });
+      }
+      throw err;
+    }
+  });
+
+  app.patch("/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const parsed = productUpdateSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+
+    try {
+      return await prisma.product.update({ where: { id }, data: parsed.data });
+    } catch (err) {
+      if (isUniqueConstraintError(err)) {
+        return reply.code(409).send({ error: "That barcode is already assigned to another product." });
+      }
+      throw err;
+    }
+  });
+
+  app.delete("/:id", async (_request, reply) => {
+    return reply.code(405).send({
+      error: "Products cannot be hard-deleted because historical counts may reference them. Mark the product inactive instead.",
+    });
+  });
+}
