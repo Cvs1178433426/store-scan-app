@@ -123,3 +123,6 @@ jobs:
 
       - name: Confirm migrated database matches schema.prisma exactly
         run: npx prisma migrate diff --exit-code --from-config-datasource --to-schema=prisma/schema.prisma
+
+      - name: Exercise atomic counting and idempotent retries on PostgreSQL
+        run: npx tsx scripts/storeCountDbValidation.ts
