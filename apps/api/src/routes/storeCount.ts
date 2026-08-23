@@ -128,16 +128,17 @@ export async function storeCountRoutes(app: FastifyInstance) {
   app.post("/sessions", async (request, reply) => {
     const parsed = createSessionSchema.safeParse(request.body ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const userId = request.user.sub;
 
     try {
       const session = await prisma.storeCountSession.create({
-        data: { name: parsed.data.name ?? null, startedById: request.user.sub },
+        data: { name: parsed.data.name ?? null, startedById: userId },
       });
       return reply.code(201).send(session);
     } catch (err) {
       if (isUniqueConstraintError(err)) {
         const existing = await prisma.storeCountSession.findFirst({
-          where: { status: "ACTIVE", startedById: request.user.sub },
+          where: { status: "ACTIVE", startedById: userId },
           orderBy: { startedAt: "desc" },
         });
         if (existing) return reply.code(200).send(existing);
@@ -147,8 +148,9 @@ export async function storeCountRoutes(app: FastifyInstance) {
   });
 
   app.get("/sessions/active", async (request) => {
+    const userId = request.user.sub;
     return prisma.storeCountSession.findFirst({
-      where: { status: "ACTIVE", startedById: request.user.sub },
+      where: { status: "ACTIVE", startedById: userId },
       orderBy: { startedAt: "desc" },
       include: {
         entries: {
@@ -161,7 +163,10 @@ export async function storeCountRoutes(app: FastifyInstance) {
 
   app.get("/sessions/:id", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const access = await assertSessionAccess(id, request.user.sub, request.user.role);
+    const userId = request.user.sub;
+    const role = request.user.role;
+    if (!userId || !role) return reply.code(401).send({ error: "invalid authenticated user" });
+    const access = await assertSessionAccess(id, userId, role);
     if (!access.ok) return reply.code(access.code).send({ error: access.error });
 
     const session = await prisma.storeCountSession.findUnique({
@@ -181,8 +186,11 @@ export async function storeCountRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const parsed = scanSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const userId = request.user.sub;
+    const role = request.user.role;
+    if (!userId || !role) return reply.code(401).send({ error: "invalid authenticated user" });
 
-    const access = await assertSessionAccess(id, request.user.sub, request.user.role);
+    const access = await assertSessionAccess(id, userId, role);
     if (!access.ok) return reply.code(access.code).send({ error: access.error });
     if (access.session.status !== "ACTIVE") return reply.code(409).send({ error: "count session is not active" });
 
@@ -256,9 +264,6 @@ export async function storeCountRoutes(app: FastifyInstance) {
         return reply.code(409).send({ error: "clientScanId was already used for another count session" });
       }
       if (clientScanId && isUniqueConstraintError(error)) {
-        // Two copies of the same logical request can race. The losing transaction
-        // rolls back its increment when the unique scan-log insert fails; return
-        // the entry recorded by the winner rather than counting twice.
         const prior = await findIdempotentEntry(clientScanId, id);
         if (prior === "conflict") return reply.code(409).send({ error: "clientScanId was already used for another count session" });
         if (prior) return reply.send(prior);
@@ -271,8 +276,11 @@ export async function storeCountRoutes(app: FastifyInstance) {
     const { sessionId, entryId } = request.params as { sessionId: string; entryId: string };
     const parsed = setQuantitySchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const userId = request.user.sub;
+    const role = request.user.role;
+    if (!userId || !role) return reply.code(401).send({ error: "invalid authenticated user" });
 
-    const access = await assertSessionAccess(sessionId, request.user.sub, request.user.role);
+    const access = await assertSessionAccess(sessionId, userId, role);
     if (!access.ok) return reply.code(access.code).send({ error: access.error });
 
     const entry = await prisma.storeCountEntry.findFirst({ where: { id: entryId, sessionId } });
@@ -292,7 +300,10 @@ export async function storeCountRoutes(app: FastifyInstance) {
 
   app.get("/sessions/:id/summary", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const access = await assertSessionAccess(id, request.user.sub, request.user.role);
+    const userId = request.user.sub;
+    const role = request.user.role;
+    if (!userId || !role) return reply.code(401).send({ error: "invalid authenticated user" });
+    const access = await assertSessionAccess(id, userId, role);
     if (!access.ok) return reply.code(access.code).send({ error: access.error });
 
     const session = await prisma.storeCountSession.findUnique({
@@ -322,7 +333,10 @@ export async function storeCountRoutes(app: FastifyInstance) {
 
   app.post("/sessions/:id/complete", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const access = await assertSessionAccess(id, request.user.sub, request.user.role);
+    const userId = request.user.sub;
+    const role = request.user.role;
+    if (!userId || !role) return reply.code(401).send({ error: "invalid authenticated user" });
+    const access = await assertSessionAccess(id, userId, role);
     if (!access.ok) return reply.code(access.code).send({ error: access.error });
     if (access.session.status !== "ACTIVE") return reply.code(409).send({ error: "count session is not active" });
 
@@ -334,7 +348,10 @@ export async function storeCountRoutes(app: FastifyInstance) {
 
   app.post("/sessions/:id/cancel", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const access = await assertSessionAccess(id, request.user.sub, request.user.role);
+    const userId = request.user.sub;
+    const role = request.user.role;
+    if (!userId || !role) return reply.code(401).send({ error: "invalid authenticated user" });
+    const access = await assertSessionAccess(id, userId, role);
     if (!access.ok) return reply.code(access.code).send({ error: access.error });
     if (access.session.status !== "ACTIVE") return reply.code(409).send({ error: "count session is not active" });
 
