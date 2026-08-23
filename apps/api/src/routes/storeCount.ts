@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { isUniqueConstraintError } from "../lib/prismaErrors.js";
+import { resolveProduct } from "../lib/barcodeLookup/index.js";
+import { matchExistingCategory } from "../lib/barcodeLookup/categoryMatch.js";
 
 const createSessionSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
@@ -40,7 +42,6 @@ export type SummaryRow = {
 
 export function buildSummaryRows(entries: SummaryEntryInput[]): SummaryRow[] {
   const byKey = new Map<string, SummaryRow>();
-
   for (const entry of entries) {
     const key = entry.productId ?? `barcode:${entry.barcodeValue}`;
     let row = byKey.get(key);
@@ -63,7 +64,6 @@ export function buildSummaryRows(entries: SummaryEntryInput[]): SummaryRow[] {
       quantity: (existingLoc?.quantity ?? 0) + entry.quantity,
     };
   }
-
   return [...byKey.values()].sort((a, b) =>
     (a.productName || a.barcodeValue).localeCompare(b.productName || b.barcodeValue),
   );
@@ -80,6 +80,37 @@ async function assertSessionAccess(
     return { ok: false, code: 403, error: "you do not have access to this count session" };
   }
   return { ok: true, session };
+}
+
+async function findOrEnrichProduct(barcodeValue: string) {
+  const existing = await prisma.product.findUnique({ where: { barcodeValue } });
+  if (existing) return existing;
+
+  const lookup = await resolveProduct(barcodeValue);
+  if (!lookup.found || !lookup.name?.trim()) return null;
+
+  const categories = await prisma.category.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true, isActive: true },
+  });
+  const matchedCategory = matchExistingCategory(lookup.category, categories);
+
+  // Upsert makes simultaneous first-time scans of the same UPC safe: both callers
+  // may perform the external lookup, but only one canonical Product row survives.
+  return prisma.product.upsert({
+    where: { barcodeValue },
+    update: {},
+    create: {
+      barcodeValue,
+      name: lookup.name.trim(),
+      manufacturer: lookup.brand?.trim() || null,
+      description: lookup.description?.trim() || null,
+      packageSize: lookup.size?.trim() || null,
+      imageUrl: lookup.imageUrl?.trim() || null,
+      categoryId: matchedCategory?.id ?? null,
+      isActive: true,
+    },
+  });
 }
 
 export async function storeCountRoutes(app: FastifyInstance) {
@@ -151,7 +182,17 @@ export async function storeCountRoutes(app: FastifyInstance) {
     if (!location) return reply.code(400).send({ error: "unknown locationId" });
     if (!location.isActive) return reply.code(400).send({ error: "this location is inactive" });
 
-    const product = await prisma.product.findUnique({ where: { barcodeValue } });
+    // Product identification happens in the background without interrupting the count.
+    // If lookup providers cannot identify the UPC, the count is still saved as unknown.
+    let product = await prisma.product.findUnique({ where: { barcodeValue } });
+    if (!product) {
+      try {
+        product = await findOrEnrichProduct(barcodeValue);
+      } catch {
+        // External enrichment must never block or lose a physical count.
+        product = null;
+      }
+    }
 
     const entry = await prisma.storeCountEntry.upsert({
       where: {
