@@ -20,6 +20,7 @@ import { pushRoutes } from "./routes/push.js";
 import { auditRoutes } from "./routes/audit.js";
 import { xpRoutes } from "./routes/xp.js";
 import { insightsRoutes } from "./routes/insights.js";
+import { storeCountRoutes } from "./routes/storeCount.js";
 import { startExpiryNotificationJob } from "./jobs/expiryNotifications.js";
 import { startTrashPurgeJob } from "./jobs/trashPurge.js";
 import { startLowStockSummaryJob } from "./jobs/lowStockSummary.js";
@@ -35,7 +36,6 @@ function resolveJwtSecret(): string {
   const isProd = process.env.NODE_ENV === "production";
 
   if (isProd && INSECURE_JWT_SECRETS.has(secret)) {
-    // 공개 저장소 기본값/미설정으로 프로덕션이 뜨면 누구나 ADMIN 토큰을 위조할 수 있다.
     console.error(
       "FATAL: JWT_SECRET must be set to a strong random value in production (not empty, changeme, or dev-secret-change-me). Generate one with: openssl rand -hex 32",
     );
@@ -53,14 +53,11 @@ function resolveJwtSecret(): string {
 const jwtSecret = resolveJwtSecret();
 
 if (isMediaAuthDisabled()) {
-  // NODE_ENV만으로 끄면 커스텀 배포에서 P0 첨부 무인증이 경고 없이 부활한다.
-  // 교차 오리진 로컬 개발(web:3000 → api:8080)에서만 MEDIA_AUTH_DISABLED=true로 켠다.
   console.warn(
     "WARNING: MEDIA_AUTH_DISABLED=true — attachment file routes are unauthenticated. Do not use this in production.",
   );
 }
 
-// token/sig 쿼리가 실수로 다시 들어와도 액세스 로그에 평문으로 남지 않게 마스킹한다.
 const app = Fastify({
   logger: {
     serializers: {
@@ -81,16 +78,12 @@ const app = Fastify({
   },
 });
 
-// Bearer 토큰 방식이라 CSRF 직접 위험은 낮고, 개발(:3000→:8080)과 웹훅 수신 자동화가
-// 오리진 제한에 깨질 수 있어 당분간 origin:true를 유지한다. 프로덕션은 Caddy same-origin.
 await app.register(cors, { origin: true });
 await app.register(cookie);
 await app.register(jwt, { secret: jwtSecret });
-await app.register(multipart, { limits: { fileSize: 20 * 1024 * 1024 } }); // 20MB
-// 기본은 전역 미적용 — 무차별 대입 방어가 필요한 로그인 라우트에서만 개별적으로 설정한다.
+await app.register(multipart, { limits: { fileSize: 20 * 1024 * 1024 } });
 await app.register(rateLimit, { global: false });
 
-// 프론트가 보내는 X-Locale 헤더(사용자가 앱에서 고른 언어)로 에러 메시지 언어를 정한다.
 app.decorateRequest("locale", "ko");
 app.addHook("onRequest", async (request) => {
   request.locale = localeFromRequest(request);
@@ -100,28 +93,22 @@ app.decorate("authenticate", async (request, reply) => {
   try {
     await request.jwtVerify();
   } catch {
-    // 예전에는 백업/CSV 다운로드용으로 ?token= 폴백이 있었지만, URL·서버 로그·Referer에
-    // JWT가 남아 위험하므로 제거했다. 클라이언트는 Authorization 헤더 + blob 다운로드를 쓴다.
     reply.code(401).send({ error: "unauthorized" });
     return;
   }
 
-  // 미디어 쿠키(purpose:"media")·백업 티켓(purpose:"backup")은 전용 경로만 허용한다.
-  // 같은 시크릿으로 서명되지만 role/tv가 없거나 범위가 달라 API Bearer로 쓰면 안 된다.
   if (request.user.purpose === "media" || request.user.purpose === "backup") {
     reply.code(401).send({ error: "unauthorized" });
     return;
   }
 
   const userId = request.user.sub;
-  // tv 없는 구 토큰(90d)은 거부한다 — 배포와 동시에 수명 단축이 효력을 갖게 한다.
   if (typeof request.user.tv !== "number") {
     reply.code(401).send({ error: "unauthorized" });
     return;
   }
   const tokenTv = request.user.tv;
   const dbTv = await getCachedTokenVersion(userId);
-  // 사용자 삭제 또는 비밀번호 변경/로그아웃으로 tokenVersion이 바뀌면 즉시(캐시 TTL 내 최대 지연) 거부.
   if (dbTv === null || dbTv !== tokenTv) {
     reply.code(401).send({ error: "unauthorized" });
     return;
@@ -129,8 +116,6 @@ app.decorate("authenticate", async (request, reply) => {
 });
 
 app.decorate("requireAdmin", async (request, reply) => {
-  // JWT에 박힌 role은 발급 시점 값이라 강등 후에도 최대 토큰 수명만큼 ADMIN으로 남을 수 있다.
-  // 관리자 라우트는 호출 빈도가 낮으므로 매 요청 DB 재조회로 즉시 반영한다.
   const user = await prisma.user.findUnique({
     where: { id: request.user.sub },
     select: { role: true },
@@ -154,6 +139,7 @@ await app.register(itemRoutes, { prefix: "/api/items" });
 await app.register(barcodeRoutes, { prefix: "/api" });
 await app.register(publicBarcodeRoutes, { prefix: "/api/barcodes" });
 await app.register(lookupRoutes, { prefix: "/api/lookup" });
+await app.register(storeCountRoutes, { prefix: "/api/store-count" });
 await app.register(attachmentRoutes, { prefix: "/api/attachments" });
 await app.register(mediaAttachmentRoutes, { prefix: "/api/attachments" });
 await app.register(settingsRoutes, { prefix: "/api/settings" });
