@@ -14,6 +14,10 @@ function newId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+export function createCountScanId(): string {
+  return newId();
+}
+
 export function getCountQueue(): QueuedCountScan[] {
   if (typeof window === "undefined") return [];
   try {
@@ -29,8 +33,12 @@ function saveCountQueue(queue: QueuedCountScan[]): void {
   localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
 }
 
-export function enqueueCountScan(entry: Omit<QueuedCountScan, "id" | "queuedAt">): void {
-  saveCountQueue([...getCountQueue(), { id: newId(), queuedAt: Date.now(), ...entry }]);
+export function enqueueCountScan(
+  entry: Omit<QueuedCountScan, "id" | "queuedAt">,
+  id: string = newId(),
+): string {
+  saveCountQueue([...getCountQueue(), { id, queuedAt: Date.now(), ...entry }]);
+  return id;
 }
 
 export function removeFromCountQueue(id: string): void {
