@@ -57,6 +57,12 @@ enum AuditCheckStatus {
   UNEXPECTED
 }
 
+enum StoreCountSessionStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String
@@ -66,10 +72,11 @@ model User {
   tokenVersion Int      @default(0)
   createdAt    DateTime @default(now())
 
-  createdItems      Item[]              @relation("ItemCreatedBy")
-  movements         StockMovement[]
-  pushSubscriptions PushSubscription[]
-  auditSessions     AuditSession[]
+  createdItems       Item[]              @relation("ItemCreatedBy")
+  movements          StockMovement[]
+  pushSubscriptions  PushSubscription[]
+  auditSessions      AuditSession[]
+  storeCountSessions StoreCountSession[]
 }
 
 model Location {
@@ -80,9 +87,9 @@ model Location {
   notes     String?
   createdAt DateTime @default(now())
 
-  parent   Location?  @relation("LocationTree", fields: [parentId], references: [id], onDelete: Cascade)
-  children Location[] @relation("LocationTree")
-  items    Item[]
+  parent        Location?      @relation("LocationTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children      Location[]     @relation("LocationTree")
+  items         Item[]
   auditSessions AuditSession[]
 }
 
@@ -135,6 +142,7 @@ model Item {
   movements          StockMovement[]
   maintenanceRecords MaintenanceRecord[]
   auditChecks        AuditCheck[]
+  storeCountEntries  StoreCountEntry[]
 
   @@index([locationId])
   @@index([categoryId])
@@ -181,13 +189,13 @@ model StockMovement {
 }
 
 model MaintenanceRecord {
-  id        String   @id @default(cuid())
-  itemId    String
-  date      DateTime
+  id          String   @id @default(cuid())
+  itemId      String
+  date        DateTime
   description String
-  cost      Float?
-  currency  String?
-  createdAt DateTime @default(now())
+  cost        Float?
+  currency    String?
+  createdAt   DateTime @default(now())
 
   item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
@@ -255,4 +263,41 @@ model AuditCheck {
 
   @@unique([sessionId, itemId])
   @@index([sessionId, status])
+}
+
+model StoreCountSession {
+  id            String                  @id @default(cuid())
+  name          String?
+  status        StoreCountSessionStatus @default(ACTIVE)
+  startedById   String?
+  startedAt     DateTime                @default(now())
+  completedAt   DateTime?
+  updatedAt     DateTime                @updatedAt
+
+  startedBy User?             @relation(fields: [startedById], references: [id], onDelete: SetNull)
+  entries   StoreCountEntry[]
+
+  @@index([status, startedAt])
+  @@index([startedById])
+}
+
+model StoreCountEntry {
+  id           String   @id @default(cuid())
+  sessionId    String
+  itemId       String?
+  barcodeValue String
+  locationCode String
+  quantity     Int      @default(1)
+  productName  String?
+  packageSize  String?
+  scannedAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  session StoreCountSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  item    Item?             @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, locationCode, barcodeValue])
+  @@index([sessionId, locationCode])
+  @@index([sessionId, barcodeValue])
+  @@index([itemId])
 }
