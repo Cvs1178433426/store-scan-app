@@ -102,6 +102,7 @@ model Category {
   parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Cascade)
   children Category[] @relation("CategoryTree")
   items    Item[]
+  products Product[]
 }
 
 model Item {
@@ -142,7 +143,6 @@ model Item {
   movements          StockMovement[]
   maintenanceRecords MaintenanceRecord[]
   auditChecks        AuditCheck[]
-  storeCountEntries  StoreCountEntry[]
 
   @@index([locationId])
   @@index([categoryId])
@@ -265,39 +265,74 @@ model AuditCheck {
   @@index([sessionId, status])
 }
 
+model StoreLocation {
+  id        String   @id @default(cuid())
+  code      String
+  name      String?
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  entries StoreCountEntry[]
+
+  @@unique([code])
+  @@index([isActive, sortOrder])
+}
+
+model Product {
+  id           String    @id @default(cuid())
+  barcodeValue String?
+  name         String
+  manufacturer String?
+  description  String?
+  packageSize  String?
+  imageUrl     String?
+  categoryId   String?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  category Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  entries  StoreCountEntry[]
+
+  @@unique([barcodeValue])
+  @@index([categoryId])
+  @@index([isActive])
+}
+
 model StoreCountSession {
-  id            String                  @id @default(cuid())
-  name          String?
-  status        StoreCountSessionStatus @default(ACTIVE)
-  startedById   String?
-  startedAt     DateTime                @default(now())
-  completedAt   DateTime?
-  updatedAt     DateTime                @updatedAt
+  id          String                  @id @default(cuid())
+  name        String?
+  status      StoreCountSessionStatus @default(ACTIVE)
+  startedById String?
+  startedAt   DateTime                @default(now())
+  completedAt DateTime?
+  updatedAt   DateTime                @updatedAt
 
   startedBy User?             @relation(fields: [startedById], references: [id], onDelete: SetNull)
   entries   StoreCountEntry[]
 
+  @@index([startedById, status])
   @@index([status, startedAt])
-  @@index([startedById])
 }
 
 model StoreCountEntry {
   id           String   @id @default(cuid())
   sessionId    String
-  itemId       String?
+  productId    String?
   barcodeValue String
-  locationCode String
+  locationId   String
   quantity     Int      @default(1)
-  productName  String?
-  packageSize  String?
   scannedAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  session StoreCountSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  item    Item?             @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  session  StoreCountSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  product  Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  location StoreLocation     @relation(fields: [locationId], references: [id], onDelete: Restrict)
 
-  @@unique([sessionId, locationCode, barcodeValue])
-  @@index([sessionId, locationCode])
+  @@unique([sessionId, locationId, barcodeValue])
+  @@index([sessionId, locationId])
   @@index([sessionId, barcodeValue])
-  @@index([itemId])
+  @@index([productId])
+  @@index([locationId])
 }
