@@ -9,7 +9,7 @@ import { useToast } from "../../lib/toast-context";
 import { createScanHints, SCAN_VIDEO_CONSTRAINTS } from "../../lib/barcodeScanner";
 import { playBeep, unlockBeepAudio } from "../../lib/beep";
 import { TorchButton } from "../../components/TorchButton";
-import { clearCountQueueForSession, enqueueCountScan, getCountQueue, removeFromCountQueue } from "../../lib/storeCountQueue";
+import { clearCountQueueForSession, createCountScanId, enqueueCountScan, getCountQueue, removeFromCountQueue } from "../../lib/storeCountQueue";
 
 const SAME_VALUE_DEBOUNCE_MS = 350;
 const WEDGE_TIMEOUT_MS = 80;
@@ -112,10 +112,6 @@ export default function StoreCountPage() {
     return () => window.removeEventListener("pointerdown", unlockBeepAudio);
   }, []);
 
-  // Enterprise handhelds (Zebra/Honeywell/Datalogic) commonly send a decoded barcode
-  // as very fast keyboard input followed by Enter. Capture that stream anywhere on the
-  // count screen while leaving normal form fields alone. Camera and hardware scans then
-  // enter the exact same handleBarcode() pipeline.
   useEffect(() => {
     if (!session || session.status !== "ACTIVE" || view !== "count") return;
     function onKeyDown(event: KeyboardEvent) {
@@ -198,7 +194,7 @@ export default function StoreCountPage() {
         try {
           await apiJson(`/api/store-count/sessions/${queued.sessionId}/scan`, {
             method: "POST",
-            body: JSON.stringify({ barcodeValue: queued.barcodeValue, locationId: queued.locationId, quantityDelta: queued.quantityDelta }),
+            body: JSON.stringify({ barcodeValue: queued.barcodeValue, locationId: queued.locationId, quantityDelta: queued.quantityDelta, clientScanId: queued.id }),
           });
           removeFromCountQueue(queued.id);
           synced++;
@@ -244,13 +240,14 @@ export default function StoreCountPage() {
     if (lastScanRef.current?.value === barcode && now - lastScanRef.current.at < SAME_VALUE_DEBOUNCE_MS) return;
     lastScanRef.current = { value: barcode, at: now };
     busyRef.current = true;
+    const clientScanId = createCountScanId();
     playBeep();
     if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate(45);
 
     try {
       const entry = await apiJson<CountEntry>(`/api/store-count/sessions/${session.id}/scan`, {
         method: "POST",
-        body: JSON.stringify({ barcodeValue: barcode, locationId, quantityDelta: 1 }),
+        body: JSON.stringify({ barcodeValue: barcode, locationId, quantityDelta: 1, clientScanId }),
       });
       setSession((current) => {
         if (!current) return current;
@@ -263,7 +260,7 @@ export default function StoreCountPage() {
     } catch (error) {
       const permanent = error instanceof ApiError && [400, 404, 409].includes(error.status);
       if (!permanent) {
-        enqueueCountScan({ sessionId: session.id, locationId, barcodeValue: barcode, quantityDelta: 1 });
+        enqueueCountScan({ sessionId: session.id, locationId, barcodeValue: barcode, quantityDelta: 1 }, clientScanId);
         setQueueCount(getCountQueue().length);
         setFlash({ kind: "queued", text: `Offline — scan safely queued: ${barcode}` });
       } else {
