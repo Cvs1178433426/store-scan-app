@@ -13,6 +13,7 @@ const scanSchema = z.object({
   barcodeValue: z.string().trim().min(1).max(128),
   locationId: z.string().trim().min(1),
   quantityDelta: z.number().int().min(1).max(999).default(1),
+  clientScanId: z.string().trim().min(1).max(160).optional(),
 });
 
 const setQuantitySchema = z.object({
@@ -95,8 +96,6 @@ async function findOrEnrichProduct(barcodeValue: string) {
   });
   const matchedCategory = matchExistingCategory(lookup.category, categories);
 
-  // Upsert makes simultaneous first-time scans of the same UPC safe: both callers
-  // may perform the external lookup, but only one canonical Product row survives.
   return prisma.product.upsert({
     where: { barcodeValue },
     update: {},
@@ -111,6 +110,16 @@ async function findOrEnrichProduct(barcodeValue: string) {
       isActive: true,
     },
   });
+}
+
+async function findIdempotentEntry(clientScanId: string, sessionId: string) {
+  const log = await prisma.storeCountScanLog.findUnique({
+    where: { idempotencyKey: clientScanId },
+    include: { entry: { include: { product: true, location: true } } },
+  });
+  if (!log) return null;
+  if (log.sessionId !== sessionId) return "conflict" as const;
+  return log.entry;
 }
 
 export async function storeCountRoutes(app: FastifyInstance) {
@@ -177,43 +186,85 @@ export async function storeCountRoutes(app: FastifyInstance) {
     if (!access.ok) return reply.code(access.code).send({ error: access.error });
     if (access.session.status !== "ACTIVE") return reply.code(409).send({ error: "count session is not active" });
 
-    const { barcodeValue, locationId, quantityDelta } = parsed.data;
+    const { barcodeValue, locationId, quantityDelta, clientScanId } = parsed.data;
     const location = await prisma.storeLocation.findUnique({ where: { id: locationId } });
     if (!location) return reply.code(400).send({ error: "unknown locationId" });
     if (!location.isActive) return reply.code(400).send({ error: "this location is inactive" });
 
-    // Product identification happens in the background without interrupting the count.
-    // If lookup providers cannot identify the UPC, the count is still saved as unknown.
+    if (clientScanId) {
+      const prior = await findIdempotentEntry(clientScanId, id);
+      if (prior === "conflict") return reply.code(409).send({ error: "clientScanId was already used for another count session" });
+      if (prior) return reply.send(prior);
+    }
+
     let product = await prisma.product.findUnique({ where: { barcodeValue } });
     if (!product) {
       try {
         product = await findOrEnrichProduct(barcodeValue);
       } catch {
-        // External enrichment must never block or lose a physical count.
         product = null;
       }
     }
 
-    const entry = await prisma.storeCountEntry.upsert({
-      where: {
-        sessionId_locationId_barcodeValue: { sessionId: id, locationId, barcodeValue },
-      },
-      update: {
-        quantity: { increment: quantityDelta },
-        productId: product?.id ?? undefined,
-        scannedAt: new Date(),
-      },
-      create: {
-        sessionId: id,
-        productId: product?.id ?? null,
-        barcodeValue,
-        locationId,
-        quantity: quantityDelta,
-      },
-      include: { product: true, location: true },
-    });
+    try {
+      const entry = await prisma.$transaction(async (tx) => {
+        if (clientScanId) {
+          const prior = await tx.storeCountScanLog.findUnique({ where: { idempotencyKey: clientScanId } });
+          if (prior) {
+            if (prior.sessionId !== id) throw new Error("IDEMPOTENCY_SESSION_CONFLICT");
+            return tx.storeCountEntry.findUniqueOrThrow({
+              where: { id: prior.entryId },
+              include: { product: true, location: true },
+            });
+          }
+        }
 
-    return reply.send(entry);
+        const counted = await tx.storeCountEntry.upsert({
+          where: {
+            sessionId_locationId_barcodeValue: { sessionId: id, locationId, barcodeValue },
+          },
+          update: {
+            quantity: { increment: quantityDelta },
+            productId: product?.id ?? undefined,
+            scannedAt: new Date(),
+          },
+          create: {
+            sessionId: id,
+            productId: product?.id ?? null,
+            barcodeValue,
+            locationId,
+            quantity: quantityDelta,
+          },
+          include: { product: true, location: true },
+        });
+
+        if (clientScanId) {
+          await tx.storeCountScanLog.create({
+            data: {
+              idempotencyKey: clientScanId,
+              entryId: counted.id,
+              sessionId: id,
+              quantityDelta,
+            },
+          });
+        }
+        return counted;
+      });
+      return reply.send(entry);
+    } catch (error) {
+      if (error instanceof Error && error.message === "IDEMPOTENCY_SESSION_CONFLICT") {
+        return reply.code(409).send({ error: "clientScanId was already used for another count session" });
+      }
+      if (clientScanId && isUniqueConstraintError(error)) {
+        // Two copies of the same logical request can race. The losing transaction
+        // rolls back its increment when the unique scan-log insert fails; return
+        // the entry recorded by the winner rather than counting twice.
+        const prior = await findIdempotentEntry(clientScanId, id);
+        if (prior === "conflict") return reply.code(409).send({ error: "clientScanId was already used for another count session" });
+        if (prior) return reply.send(prior);
+      }
+      throw error;
+    }
   });
 
   app.patch("/sessions/:sessionId/entries/:entryId", async (request, reply) => {
