@@ -129,22 +129,25 @@ export async function storeCountRoutes(app: FastifyInstance) {
     const parsed = createSessionSchema.safeParse(request.body ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const userId = request.user.sub;
+    if (!userId) return reply.code(401).send({ error: "invalid authenticated user" });
 
-    try {
-      const session = await prisma.storeCountSession.create({
+    const result = await prisma.$transaction(async (tx) => {
+      // Serialize session creation for this user across browser tabs/devices.
+      // This avoids duplicate ACTIVE sessions without adding a partial unique
+      // index that Prisma cannot represent cleanly in schema.prisma.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
+      const existing = await tx.storeCountSession.findFirst({
+        where: { status: "ACTIVE", startedById: userId },
+        orderBy: { startedAt: "desc" },
+      });
+      if (existing) return { created: false, session: existing };
+      const session = await tx.storeCountSession.create({
         data: { name: parsed.data.name ?? null, startedById: userId },
       });
-      return reply.code(201).send(session);
-    } catch (err) {
-      if (isUniqueConstraintError(err)) {
-        const existing = await prisma.storeCountSession.findFirst({
-          where: { status: "ACTIVE", startedById: userId },
-          orderBy: { startedAt: "desc" },
-        });
-        if (existing) return reply.code(200).send(existing);
-      }
-      throw err;
-    }
+      return { created: true, session };
+    });
+
+    return reply.code(result.created ? 201 : 200).send(result.session);
   });
 
   app.get("/sessions/active", async (request) => {
