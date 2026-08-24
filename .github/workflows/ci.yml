@@ -126,3 +126,6 @@ jobs:
 
       - name: Exercise atomic counting and idempotent retries on PostgreSQL
         run: npx tsx scripts/storeCountDbValidation.ts
+
+      - name: Exercise the real Store Count HTTP route on PostgreSQL
+        run: npx tsx scripts/storeCountRouteValidation.ts
