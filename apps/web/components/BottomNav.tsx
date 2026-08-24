@@ -67,7 +67,6 @@ function MoreIcon() {
   );
 }
 
-// 지도 위치가 아니라 냉장고/선반/상자 같은 보관 위치라 핀 아이콘 대신 선반(칸막이) 모양을 쓴다.
 function LocationIcon({ size = 24 }: { size?: number }) {
   return (
     <svg {...iconProps()} width={size} height={size}>
@@ -120,7 +119,7 @@ function SettingsIcon({ size = 24 }: { size?: number }) {
   return (
     <svg {...iconProps()} width={size} height={size}>
       <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z" />
     </svg>
   );
 }
@@ -170,7 +169,7 @@ function InsightsIcon({ size = 24 }: { size?: number }) {
 const TABS: { href: string; labelKey: TranslationKey; Icon: () => ReactElement; primary?: boolean }[] = [
   { href: "/", labelKey: "navHome", Icon: HomeIcon },
   { href: "/items", labelKey: "navItems", Icon: BoxIcon },
-  { href: "/scan", labelKey: "navScan", Icon: CameraIcon, primary: true },
+  { href: "/store-count", labelKey: "navScan", Icon: CameraIcon, primary: true },
   { href: "/shopping", labelKey: "navShopping", Icon: CartIcon },
 ];
 
@@ -233,9 +232,7 @@ export function BottomNav() {
             );
           })}
           <button type="button" className={`bottom-nav-more ${moreOpen ? "active" : ""}`} onClick={() => setMoreOpen((v) => !v)}>
-            <span className="icon">
-              <MoreIcon />
-            </span>
+            <span className="icon"><MoreIcon /></span>
             {t("navMore")}
           </button>
         </div>
@@ -245,6 +242,14 @@ export function BottomNav() {
         <div className="sheet-backdrop" onClick={() => setMoreOpen(false)}>
           <div className="sheet-card" ref={sheetRef} onClick={(e) => e.stopPropagation()}>
             <div className="sheet-handle" />
+
+            <div className="sheet-group-label">Store Scan</div>
+            <div className="sheet-grid">
+              <button type="button" className="sheet-item" onClick={() => go("/store-count")}><CameraIcon /> Count products</button>
+              <button type="button" className="sheet-item" onClick={() => go("/store-scan")}><CameraIcon /> Add by barcode</button>
+              <button type="button" className="sheet-item" onClick={() => go("/store-products")}><BoxIcon /> Products</button>
+              <button type="button" className="sheet-item" onClick={() => go("/store-locations")}><LocationIcon size={20} /> Store locations</button>
+            </div>
 
             <div className="sheet-group-label">{t("menuGroupStructure")}</div>
             <div className="sheet-grid">
@@ -258,49 +263,21 @@ export function BottomNav() {
 
             <div className="sheet-group-label">{t("menuGroupActions")}</div>
             <div className="sheet-grid">
-              <button type="button" className="sheet-item" onClick={() => go("/audit")}>
-                <AuditIcon size={20} /> {t("auditNavLabel")}
-              </button>
-              <button type="button" className="sheet-item" onClick={() => go("/history")}>
-                <HistoryIcon size={20} /> {t("historyTitle")}
-              </button>
-              <button type="button" className="sheet-item" onClick={() => go("/insights")}>
-                <InsightsIcon size={20} /> {t("insightsNavLabel")}
-              </button>
-              <button type="button" className="sheet-item" onClick={() => go("/labels")}>
-                <LabelIcon size={20} /> {t("printLabels")}
-              </button>
-              <button type="button" className="sheet-item" onClick={() => go("/trash")}>
-                <TrashIcon size={20} /> {t("trashTitle")}
-              </button>
+              <button type="button" className="sheet-item" onClick={() => go("/audit")}><AuditIcon size={20} /> {t("auditNavLabel")}</button>
+              <button type="button" className="sheet-item" onClick={() => go("/history")}><HistoryIcon size={20} /> {t("historyTitle")}</button>
+              <button type="button" className="sheet-item" onClick={() => go("/insights")}><InsightsIcon size={20} /> {t("insightsNavLabel")}</button>
+              <button type="button" className="sheet-item" onClick={() => go("/labels")}><LabelIcon size={20} /> {t("printLabels")}</button>
+              <button type="button" className="sheet-item" onClick={() => go("/trash")}><TrashIcon size={20} /> {t("trashTitle")}</button>
             </div>
 
             <div className="sheet-group-label">{t("menuGroupAccount")}</div>
             <div className="sheet-grid">
-              <button type="button" className="sheet-item" onClick={() => go("/settings")}>
-                <SettingsIcon size={20} /> {t("settingsLabel")}
-              </button>
-              {isAdmin && (
-                <button type="button" className="sheet-item" onClick={() => go("/users")}>
-                  <UsersIcon size={20} /> {t("familyAccounts")}
-                </button>
-              )}
-              {isAdmin && (
-                <button type="button" className="sheet-item" onClick={() => go("/settings/integrations")}>
-                  <IntegrationIcon size={20} /> {t("integrationSettings")}
-                </button>
-              )}
+              <button type="button" className="sheet-item" onClick={() => go("/settings")}><SettingsIcon size={20} /> {t("settingsLabel")}</button>
+              {isAdmin && <button type="button" className="sheet-item" onClick={() => go("/users")}><UsersIcon size={20} /> {t("familyAccounts")}</button>}
+              {isAdmin && <button type="button" className="sheet-item" onClick={() => go("/settings/integrations")}><IntegrationIcon size={20} /> {t("integrationSettings")}</button>}
             </div>
 
-            <div
-              style={{
-                fontSize: 12,
-                color: "var(--color-text-muted)",
-                marginTop: 12,
-                paddingTop: 12,
-                borderTop: "1px solid var(--color-border)",
-              }}
-            >
+            <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--color-border)" }}>
               v{process.env.APP_VERSION}
             </div>
           </div>
