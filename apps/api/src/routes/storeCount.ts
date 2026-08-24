@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
@@ -230,22 +231,27 @@ export async function storeCountRoutes(app: FastifyInstance) {
           }
         }
 
-        const counted = await tx.storeCountEntry.upsert({
-          where: {
-            sessionId_locationId_barcodeValue: { sessionId: id, locationId, barcodeValue },
-          },
-          update: {
-            quantity: { increment: quantityDelta },
-            productId: product?.id ?? undefined,
-            scannedAt: new Date(),
-          },
-          create: {
-            sessionId: id,
-            productId: product?.id ?? null,
-            barcodeValue,
-            locationId,
-            quantity: quantityDelta,
-          },
+        // Prisma upsert can race on the initial INSERT when multiple HTTP requests
+        // create the same compound key at once. Use PostgreSQL's native ON CONFLICT
+        // so creation and increment are one atomic statement under real contention.
+        const now = new Date();
+        const rows = await tx.$queryRaw<Array<{ id: string }>>`
+          INSERT INTO "StoreCountEntry"
+            ("id", "sessionId", "productId", "barcodeValue", "locationId", "quantity", "scannedAt", "updatedAt")
+          VALUES
+            (${randomUUID()}, ${id}, ${product?.id ?? null}, ${barcodeValue}, ${locationId}, ${quantityDelta}, ${now}, ${now})
+          ON CONFLICT ("sessionId", "locationId", "barcodeValue")
+          DO UPDATE SET
+            "quantity" = "StoreCountEntry"."quantity" + EXCLUDED."quantity",
+            "productId" = COALESCE(EXCLUDED."productId", "StoreCountEntry"."productId"),
+            "scannedAt" = EXCLUDED."scannedAt",
+            "updatedAt" = EXCLUDED."updatedAt"
+          RETURNING "id"
+        `;
+        const countedId = rows[0]?.id;
+        if (!countedId) throw new Error("STORE_COUNT_ENTRY_WRITE_FAILED");
+        const counted = await tx.storeCountEntry.findUniqueOrThrow({
+          where: { id: countedId },
           include: { product: true, location: true },
         });
 
