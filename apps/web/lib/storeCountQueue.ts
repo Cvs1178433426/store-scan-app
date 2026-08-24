@@ -37,7 +37,14 @@ export function enqueueCountScan(
   entry: Omit<QueuedCountScan, "id" | "queuedAt">,
   id: string = newId(),
 ): string {
-  saveCountQueue([...getCountQueue(), { id, queuedAt: Date.now(), ...entry }]);
+  const queue = getCountQueue();
+  // A physical scan owns one stable clientScanId for its entire lifecycle.
+  // If the same failed attempt reaches enqueue more than once, keep one local
+  // record rather than creating duplicate retry work. The server enforces the
+  // same idempotency key independently, so this is defense in depth.
+  if (!queue.some((queued) => queued.id === id)) {
+    saveCountQueue([...queue, { id, queuedAt: Date.now(), ...entry }]);
+  }
   return id;
 }
 
