@@ -9,7 +9,18 @@ import { useToast } from "../../lib/toast-context";
 import { createScanHints, SCAN_VIDEO_CONSTRAINTS } from "../../lib/barcodeScanner";
 import { playBeep, unlockBeepAudio } from "../../lib/beep";
 import { TorchButton } from "../../components/TorchButton";
-import { clearCountQueueForSession, createCountScanId, enqueueCountScan, getCountQueue, removeFromCountQueue } from "../../lib/storeCountQueue";
+import {
+  clearCountQueueForSession,
+  createCountScanId,
+  enqueueCountScan,
+  getCountQueue,
+  getFailedCountQueue,
+  getPendingCountQueue,
+  markCountScanFailed,
+  removeFromCountQueue,
+  retryFailedCountScan,
+  type QueuedCountScan,
+} from "../../lib/storeCountQueue";
 
 const SAME_VALUE_DEBOUNCE_MS = 350;
 const WEDGE_TIMEOUT_MS = 80;
@@ -69,8 +80,14 @@ export default function StoreCountPage() {
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [manualValue, setManualValue] = useState("");
-  const [queueCount, setQueueCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [failedScans, setFailedScans] = useState<QueuedCountScan[]>([]);
   const [flash, setFlash] = useState<{ kind: "known" | "unknown" | "queued" | "error"; text: string } | null>(null);
+
+  function refreshQueueState() {
+    setPendingCount(getPendingCountQueue().length);
+    setFailedScans(getFailedCountQueue());
+  }
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -100,7 +117,7 @@ export default function StoreCountPage() {
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    setQueueCount(getCountQueue().length);
+    refreshQueueState();
     void flushQueue();
     window.addEventListener("online", flushQueue);
     return () => window.removeEventListener("online", flushQueue);
@@ -190,7 +207,8 @@ export default function StoreCountPage() {
     flushingRef.current = true;
     try {
       let synced = 0;
-      for (const queued of getCountQueue()) {
+      let newlyFailed = 0;
+      for (const queued of getPendingCountQueue()) {
         try {
           await apiJson(`/api/store-count/sessions/${queued.sessionId}/scan`, {
             method: "POST",
@@ -200,18 +218,26 @@ export default function StoreCountPage() {
           synced++;
         } catch (error) {
           if (error instanceof ApiError && [400, 404, 409].includes(error.status)) {
-            removeFromCountQueue(queued.id);
+            markCountScanFailed(queued.id, error.message || `Server rejected queued scan (${error.status})`);
+            newlyFailed++;
             continue;
           }
           break;
         }
       }
-      setQueueCount(getCountQueue().length);
+      refreshQueueState();
       if (synced && session) void refreshSession(session.id);
       if (synced) show(`${synced} queued scan${synced === 1 ? "" : "s"} synced.`, "success");
+      if (newlyFailed) show(`${newlyFailed} scan${newlyFailed === 1 ? " needs" : "s need"} review — nothing was discarded.`, "error");
     } finally {
       flushingRef.current = false;
     }
+  }
+
+  async function retryFailedScan(id: string) {
+    retryFailedCountScan(id);
+    refreshQueueState();
+    await flushQueue();
   }
 
   async function startSession() {
@@ -258,13 +284,14 @@ export default function StoreCountPage() {
         text: entry.product ? `${entry.product.name} — ${entry.quantity} here` : `Unknown UPC ${barcode} counted — add product details later`,
       });
     } catch (error) {
-      const permanent = error instanceof ApiError && [400, 404, 409].includes(error.status);
-      if (!permanent) {
-        enqueueCountScan({ sessionId: session.id, locationId, barcodeValue: barcode, quantityDelta: 1 }, clientScanId);
-        setQueueCount(getCountQueue().length);
-        setFlash({ kind: "queued", text: `Offline — scan safely queued: ${barcode}` });
+      enqueueCountScan({ sessionId: session.id, locationId, barcodeValue: barcode, quantityDelta: 1 }, clientScanId);
+      if (error instanceof ApiError && [400, 404, 409].includes(error.status)) {
+        markCountScanFailed(clientScanId, error.message || `Server rejected scan (${error.status})`);
+        refreshQueueState();
+        setFlash({ kind: "error", text: `Scan captured but needs review: ${barcode}` });
       } else {
-        setFlash({ kind: "error", text: error instanceof Error ? error.message : "Scan failed." });
+        refreshQueueState();
+        setFlash({ kind: "queued", text: `Offline — scan safely queued: ${barcode}` });
       }
     } finally {
       busyRef.current = false;
@@ -293,8 +320,9 @@ export default function StoreCountPage() {
   }
 
   async function finishSession() {
-    if (!session || queueCount > 0) {
-      if (queueCount > 0) show("Reconnect and sync queued scans before finishing this count.", "error");
+    const unresolvedCount = pendingCount + failedScans.length;
+    if (!session || unresolvedCount > 0) {
+      if (unresolvedCount > 0) show("Resolve or sync every captured scan before finishing this count.", "error");
       return;
     }
     try {
@@ -307,11 +335,16 @@ export default function StoreCountPage() {
   }
 
   async function cancelSession() {
-    if (!session || !window.confirm("Cancel this count session?")) return;
+    if (!session) return;
+    const unresolvedForSession = getCountQueue().filter((entry) => entry.sessionId === session.id).length;
+    const warning = unresolvedForSession > 0
+      ? `Cancel this count session? This will deliberately discard ${unresolvedForSession} locally captured unresolved scan${unresolvedForSession === 1 ? "" : "s"}.`
+      : "Cancel this count session?";
+    if (!window.confirm(warning)) return;
     try {
       await apiJson(`/api/store-count/sessions/${session.id}/cancel`, { method: "POST" });
       clearCountQueueForSession(session.id);
-      setQueueCount(getCountQueue().length);
+      refreshQueueState();
       setSession(null);
       setSummary(null);
       setView("count");
@@ -332,6 +365,7 @@ export default function StoreCountPage() {
   const currentLocation = locations.find((location) => location.id === locationId);
   const entriesHere = session?.entries.filter((entry) => entry.locationId === locationId) ?? [];
   const unitsHere = entriesHere.reduce((sum, entry) => sum + entry.quantity, 0);
+  const unresolvedCount = pendingCount + failedScans.length;
 
   return (
     <main className="container" style={{ maxWidth: 680, paddingBottom: 48 }}>
@@ -355,7 +389,14 @@ export default function StoreCountPage() {
         <>
           <section className="card" style={{ padding: 12, marginBottom: 12 }}>
             <label style={{ display: "block", fontSize: 12, fontWeight: 800, marginBottom: 5 }}>CURRENT LOCATION</label>
-            <select value={locationId} onChange={(event) => setLocationId(event.target.value)} style={{ width: "100%", fontSize: 19, fontWeight: 800, minHeight: 50 }}>
+            <select
+              value={locationId}
+              onChange={(event) => {
+                setLocationId(event.target.value);
+                event.currentTarget.blur();
+              }}
+              style={{ width: "100%", fontSize: 19, fontWeight: 800, minHeight: 50 }}
+            >
               {locations.length === 0 && <option value="">No active locations configured</option>}
               {locations.map((location) => <option key={location.id} value={location.id}>{location.code}{location.name ? ` — ${location.name}` : ""}</option>)}
             </select>
@@ -379,7 +420,27 @@ export default function StoreCountPage() {
                 <button type="submit" disabled={!manualValue.trim() || !locationId}>Add</button>
               </form>
 
-              {queueCount > 0 && <p style={{ textAlign: "center", fontSize: 13, fontWeight: 700 }}>{queueCount} scan{queueCount === 1 ? "" : "s"} safely queued for sync</p>}
+              {pendingCount > 0 && (
+                <div className="card" style={{ marginTop: 10, padding: 12, textAlign: "center", fontWeight: 800 }}>
+                  {pendingCount} scan{pendingCount === 1 ? "" : "s"} safely queued — waiting to sync
+                </div>
+              )}
+
+              {failedScans.length > 0 && (
+                <section className="card" style={{ marginTop: 10, padding: 12, border: "2px solid rgba(220, 80, 80, .55)" }}>
+                  <strong>{failedScans.length} captured scan{failedScans.length === 1 ? " needs" : "s need"} review</strong>
+                  <p style={{ margin: "5px 0 10px", fontSize: 13 }}>These scans were not discarded. Resolve them before finishing the count.</p>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {failedScans.map((scan) => (
+                      <div key={scan.id} style={{ paddingTop: 8, borderTop: "1px solid rgba(127,127,127,.25)" }}>
+                        <div><strong>{scan.barcodeValue}</strong> · {locations.find((location) => location.id === scan.locationId)?.code ?? "unknown location"}</div>
+                        <div style={{ fontSize: 12, opacity: 0.75, margin: "3px 0 6px" }}>{scan.failureReason ?? "Server rejected this queued scan."}</div>
+                        <button type="button" className="secondary" onClick={() => void retryFailedScan(scan.id)} style={{ minHeight: 40 }}>Retry</button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               {entriesHere.length > 0 && (
                 <section style={{ marginTop: 18 }}>
@@ -391,7 +452,7 @@ export default function StoreCountPage() {
               )}
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 20 }}>
-                <button type="button" onClick={() => void finishSession()} disabled={queueCount > 0} style={{ minHeight: 50 }}>Finish</button>
+                <button type="button" onClick={() => void finishSession()} disabled={unresolvedCount > 0} style={{ minHeight: 50 }}>Finish</button>
                 <button type="button" className="secondary" onClick={() => void cancelSession()} style={{ minHeight: 50 }}>Cancel</button>
               </div>
             </>
