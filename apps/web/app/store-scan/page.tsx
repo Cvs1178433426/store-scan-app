@@ -27,23 +27,21 @@ type Category = {
   isActive?: boolean;
 };
 
-type Barcode = { value: string };
-
-type Item = {
+type Product = {
   id: string;
+  barcodeValue: string | null;
   name: string;
-  manufacturer?: string | null;
-  description?: string | null;
-  packageSize?: string | null;
-  photoUrl?: string | null;
-  categoryId?: string | null;
-  isActive?: boolean;
-  barcodes?: Barcode[];
+  manufacturer: string | null;
+  description: string | null;
+  packageSize: string | null;
+  imageUrl: string | null;
+  categoryId: string | null;
+  isActive: boolean;
 };
 
 type ProductDraft = {
   barcode: string;
-  itemId: string | null;
+  productId: string | null;
   name: string;
   manufacturer: string;
   description: string;
@@ -84,10 +82,6 @@ function suggestCategory(externalCategory: string, categories: Category[]): stri
   }
 
   return best?.id ?? "";
-}
-
-function exactBarcodeMatch(items: Item[], barcode: string): Item | null {
-  return items.find((item) => item.barcodes?.some((entry) => entry.value === barcode)) ?? null;
 }
 
 export default function StoreScanPage() {
@@ -173,24 +167,23 @@ export default function StoreScanPage() {
     if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate(60);
 
     try {
-      const [lookup, searchResult] = await Promise.all([
+      const [lookup, products] = await Promise.all([
         apiJson<LookupResult>(`/api/lookup/${encodeURIComponent(barcode)}`),
-        apiJson<Item[] | { items: Item[] }>(`/api/items?q=${encodeURIComponent(barcode)}`),
+        apiJson<Product[]>(`/api/products?q=${encodeURIComponent(barcode)}&includeInactive=true`),
       ]);
 
-      const rows = Array.isArray(searchResult) ? searchResult : searchResult.items;
-      const existing = exactBarcodeMatch(rows, barcode);
+      const existing = products.find((product) => product.barcodeValue === barcode) ?? null;
       const externalCategory = lookup.category ?? "";
       const recommendedCategory = suggestCategory(externalCategory, categories);
 
       setDraft({
         barcode,
-        itemId: existing?.id ?? null,
+        productId: existing?.id ?? null,
         name: existing?.name || lookup.name || "",
         manufacturer: existing?.manufacturer || lookup.brand || "",
         description: existing?.description || lookup.description || "",
         packageSize: existing?.packageSize || lookup.size || "",
-        imageUrl: existing?.photoUrl || lookup.imageUrl || "",
+        imageUrl: existing?.imageUrl || lookup.imageUrl || "",
         externalCategory,
         categoryId: existing?.categoryId || recommendedCategory,
         provider: lookup.provider,
@@ -215,29 +208,25 @@ export default function StoreScanPage() {
     setBusy(true);
     try {
       const body = {
+        barcodeValue: draft.barcode,
         name: draft.name.trim(),
         manufacturer: draft.manufacturer.trim() || null,
         description: draft.description.trim() || null,
         packageSize: draft.packageSize.trim() || null,
-        photoUrl: draft.imageUrl.trim() || null,
+        imageUrl: draft.imageUrl.trim() || null,
         categoryId: draft.categoryId || null,
         isActive: true,
       };
 
-      if (draft.itemId) {
-        await apiJson(`/api/items/${draft.itemId}`, {
+      if (draft.productId) {
+        await apiJson(`/api/products/${draft.productId}`, {
           method: "PATCH",
           body: JSON.stringify(body),
         });
       } else {
-        await apiJson("/api/items", {
+        await apiJson("/api/products", {
           method: "POST",
-          body: JSON.stringify({
-            ...body,
-            quantity: 1,
-            barcodeValue: draft.barcode,
-            itemType: "CONSUMABLE",
-          }),
+          body: JSON.stringify(body),
         });
       }
 
@@ -255,11 +244,11 @@ export default function StoreScanPage() {
   }
 
   async function makeInactive() {
-    if (!draft?.itemId || busyRef.current) return;
+    if (!draft?.productId || busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
     try {
-      await apiJson(`/api/items/${draft.itemId}`, {
+      await apiJson(`/api/products/${draft.productId}`, {
         method: "PATCH",
         body: JSON.stringify({ isActive: false }),
       });
@@ -350,8 +339,8 @@ export default function StoreScanPage() {
             <div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
                 <span style={{ fontSize: 12, padding: "3px 8px", borderRadius: 999, background: "rgba(127,127,127,.16)" }}>UPC {draft.barcode}</span>
-                <span style={{ fontSize: 12, padding: "3px 8px", borderRadius: 999, background: draft.itemId ? "rgba(70,160,90,.18)" : "rgba(80,120,220,.18)" }}>
-                  {draft.itemId ? "Existing product" : "New product"}
+                <span style={{ fontSize: 12, padding: "3px 8px", borderRadius: 999, background: draft.productId ? "rgba(70,160,90,.18)" : "rgba(80,120,220,.18)" }}>
+                  {draft.productId ? "Existing product" : "New product"}
                 </span>
               </div>
               <strong style={{ fontSize: 18 }}>{draft.name || "Product name needed"}</strong>
@@ -397,7 +386,7 @@ export default function StoreScanPage() {
             <button type="button" className="secondary" onClick={cancelReview} disabled={busy} style={{ minHeight: 48 }}>Cancel</button>
           </div>
 
-          {draft.itemId && (
+          {draft.productId && (
             <button type="button" className="secondary" onClick={makeInactive} disabled={busy} style={{ width: "100%", marginTop: 8 }}>
               Make This Product Inactive
             </button>
