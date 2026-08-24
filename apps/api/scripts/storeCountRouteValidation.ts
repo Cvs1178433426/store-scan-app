@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import jwt from "@fastify/jwt";
 import { prisma } from "../src/lib/prisma.js";
+import { productRoutes } from "../src/routes/products.js";
 import { storeCountRoutes } from "../src/routes/storeCount.js";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -19,6 +20,8 @@ async function main() {
   const barcodeAtomic = `route-atomic-${suffix}`;
   const barcodeRetry = `route-retry-${suffix}`;
   const barcodeConflict = `route-conflict-${suffix}`;
+  const barcodeCatalog = `route-catalog-${suffix}`;
+  const catalogName = `Catalog Product ${suffix}`;
 
   const app = Fastify({ logger: false });
   await app.register(jwt, { secret: "store-count-route-validation-secret" });
@@ -29,6 +32,7 @@ async function main() {
       await reply.code(401).send({ error: "unauthorized" });
     }
   });
+  await app.register(productRoutes, { prefix: "/api/products" });
   await app.register(storeCountRoutes, { prefix: "/api/store-count" });
   await app.ready();
 
@@ -96,6 +100,65 @@ async function main() {
       where: { startedById: admin.id, status: "ACTIVE" },
     });
     assert(activeSessionCount === 1, `database contains ${activeSessionCount} ACTIVE sessions for one user`);
+
+    // Prove the public Product API and Store Count share one catalog. This is a
+    // regression guard for the historical /api/items vs /api/products split:
+    // save a product through the real Product route, scan it through the real
+    // Store Count route, then verify both the count entry and summary resolve it.
+    const createCatalogProduct = await app.inject({
+      method: "POST",
+      url: "/api/products",
+      headers: auth(adminToken),
+      payload: {
+        barcodeValue: barcodeCatalog,
+        name: catalogName,
+        manufacturer: "Route Validation Co",
+        packageSize: "12 ct",
+        isActive: true,
+      },
+    });
+    assert(createCatalogProduct.statusCode === 201, `Product API create returned ${createCatalogProduct.statusCode}: ${createCatalogProduct.body}`);
+    const createdCatalogProduct = parseJson<{ id: string; barcodeValue: string; name: string }>(createCatalogProduct.body);
+    assert(createdCatalogProduct.barcodeValue === barcodeCatalog, "Product API returned the wrong barcode");
+
+    const catalogLookup = await app.inject({
+      method: "GET",
+      url: `/api/products/by-barcode/${encodeURIComponent(barcodeCatalog)}`,
+      headers: auth(adminToken),
+    });
+    assert(catalogLookup.statusCode === 200, `Product API barcode lookup returned ${catalogLookup.statusCode}: ${catalogLookup.body}`);
+    const lookedUpCatalogProduct = parseJson<{ id: string; name: string }>(catalogLookup.body);
+    assert(lookedUpCatalogProduct.id === createdCatalogProduct.id, "Product API barcode lookup did not return the newly-created Product");
+
+    const catalogScan = await app.inject({
+      method: "POST",
+      url: `/api/store-count/sessions/${sessionId}/scan`,
+      headers: auth(adminToken),
+      payload: {
+        barcodeValue: barcodeCatalog,
+        locationId: location.id,
+        quantityDelta: 1,
+        clientScanId: `route-catalog-scan-${suffix}`,
+      },
+    });
+    assert(catalogScan.statusCode === 200, `newly cataloged Product scan returned ${catalogScan.statusCode}: ${catalogScan.body}`);
+    const catalogEntry = parseJson<{ productId: string | null; barcodeValue: string; quantity: number; product: { id: string; name: string } | null }>(catalogScan.body);
+    assert(catalogEntry.productId === createdCatalogProduct.id, "Store Count entry did not reference the Product created through /api/products");
+    assert(catalogEntry.product?.name === catalogName, "Store Count scan did not resolve the newly-created Product name");
+    assert(catalogEntry.quantity === 1, `newly cataloged Product scan produced quantity ${catalogEntry.quantity}, expected 1`);
+
+    const catalogSummaryResponse = await app.inject({
+      method: "GET",
+      url: `/api/store-count/sessions/${sessionId}/summary`,
+      headers: auth(adminToken),
+    });
+    assert(catalogSummaryResponse.statusCode === 200, `summary after catalog scan returned ${catalogSummaryResponse.statusCode}: ${catalogSummaryResponse.body}`);
+    const catalogSummary = parseJson<{ rows: Array<{ productId: string | null; barcodeValue: string; productName: string | null; total: number }> }>(catalogSummaryResponse.body);
+    const catalogSummaryRow = catalogSummary.rows.find((row) => row.barcodeValue === barcodeCatalog);
+    assert(Boolean(catalogSummaryRow), "summary omitted the Product created through /api/products");
+    assert(catalogSummaryRow!.productId === createdCatalogProduct.id, "summary referenced the wrong Product id");
+    assert(catalogSummaryRow!.productName === catalogName, "summary did not display the newly-created Product name");
+    assert(catalogSummaryRow!.total === 1, `summary total for newly-created Product was ${catalogSummaryRow!.total}, expected 1`);
 
     // Exercise the real HTTP scan endpoint with 20 separate physical scans.
     const atomicResponses = await Promise.all(
@@ -231,6 +294,7 @@ async function main() {
     assert(scanCompleted.statusCode === 409, `scan into completed session returned ${scanCompleted.statusCode}, expected 409`);
 
     console.log("Store Count HTTP route validation passed:");
+    console.log("- Product API create -> barcode lookup -> Store Count scan -> summary uses the same Product");
     console.log("- 10 concurrent session starts => exactly one ACTIVE session");
     console.log("- 20 concurrent unique HTTP scans => quantity 20");
     console.log("- 10 concurrent HTTP retries with one clientScanId => quantity 1");
@@ -245,7 +309,7 @@ async function main() {
       });
     }
     await prisma.product.deleteMany({
-      where: { barcodeValue: { in: [barcodeAtomic, barcodeRetry, barcodeConflict] } },
+      where: { barcodeValue: { in: [barcodeAtomic, barcodeRetry, barcodeConflict, barcodeCatalog] } },
     });
     if (locationId) await prisma.storeLocation.deleteMany({ where: { id: locationId } });
     await prisma.user.deleteMany({ where: { email: { in: [adminEmail, userEmail] } } });
