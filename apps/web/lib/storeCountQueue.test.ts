@@ -4,7 +4,11 @@ import {
   createCountScanId,
   enqueueCountScan,
   getCountQueue,
+  getFailedCountQueue,
+  getPendingCountQueue,
+  markCountScanFailed,
   removeFromCountQueue,
+  retryFailedCountScan,
 } from "./storeCountQueue";
 
 describe("storeCountQueue", () => {
@@ -31,6 +35,7 @@ describe("storeCountQueue", () => {
       locationId: "l1",
       barcodeValue: "123",
       quantityDelta: 1,
+      status: "pending",
     });
   });
 
@@ -48,6 +53,43 @@ describe("storeCountQueue", () => {
     const first = enqueueCountScan({ sessionId: "s1", locationId: "l1", barcodeValue: "123", quantityDelta: 1 });
     const second = enqueueCountScan({ sessionId: "s1", locationId: "l1", barcodeValue: "123", quantityDelta: 1 });
     expect(first).not.toBe(second);
+  });
+
+  it("preserves a permanently failed scan for reconciliation instead of deleting it", () => {
+    const id = enqueueCountScan({ sessionId: "s1", locationId: "l1", barcodeValue: "123", quantityDelta: 1 });
+    markCountScanFailed(id, "Count session is no longer active");
+
+    expect(getPendingCountQueue()).toHaveLength(0);
+    expect(getFailedCountQueue()).toHaveLength(1);
+    expect(getFailedCountQueue()[0]).toMatchObject({
+      id,
+      status: "failed",
+      failureReason: "Count session is no longer active",
+    });
+  });
+
+  it("can explicitly retry a failed scan without changing its stable id", () => {
+    const id = enqueueCountScan({ sessionId: "s1", locationId: "l1", barcodeValue: "123", quantityDelta: 1 });
+    markCountScanFailed(id, "Temporary admin correction required");
+    retryFailedCountScan(id);
+
+    expect(getFailedCountQueue()).toHaveLength(0);
+    expect(getPendingCountQueue()).toHaveLength(1);
+    expect(getPendingCountQueue()[0]).toMatchObject({ id, status: "pending" });
+  });
+
+  it("treats legacy queue rows with no status as pending", () => {
+    localStorage.setItem("store_scan_count_queue", JSON.stringify([{
+      id: "legacy-1",
+      sessionId: "s1",
+      locationId: "l1",
+      barcodeValue: "123",
+      quantityDelta: 1,
+      queuedAt: 123,
+    }]));
+
+    expect(getPendingCountQueue()).toHaveLength(1);
+    expect(getPendingCountQueue()[0].status).toBe("pending");
   });
 
   it("removes only the requested queued scan", () => {
