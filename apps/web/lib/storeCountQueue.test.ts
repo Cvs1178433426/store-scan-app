@@ -34,6 +34,16 @@ describe("storeCountQueue", () => {
     });
   });
 
+  it("does not duplicate one physical scan when the same retry id is enqueued twice", () => {
+    const id = createCountScanId();
+    const scan = { sessionId: "s1", locationId: "l1", barcodeValue: "123", quantityDelta: 1 };
+    enqueueCountScan(scan, id);
+    enqueueCountScan(scan, id);
+
+    expect(getCountQueue()).toHaveLength(1);
+    expect(getCountQueue()[0].id).toBe(id);
+  });
+
   it("generates distinct ids for separate physical scans", () => {
     const first = enqueueCountScan({ sessionId: "s1", locationId: "l1", barcodeValue: "123", quantityDelta: 1 });
     const second = enqueueCountScan({ sessionId: "s1", locationId: "l1", barcodeValue: "123", quantityDelta: 1 });
