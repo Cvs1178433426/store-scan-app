@@ -112,6 +112,10 @@ jobs:
         working-directory: .
         run: npm ci
 
+      - name: Build shared workspace package used by real API routes
+        working-directory: .
+        run: npm run build -w packages/shared
+
       - name: Generate Prisma client
         run: npx prisma generate
 
