@@ -16,6 +16,8 @@ async function main() {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const adminEmail = `route-admin-${suffix}@example.test`;
   const userEmail = `route-user-${suffix}@example.test`;
+  const organizationSlug = `route-org-${suffix}`;
+  const siteCode = `SITE-${suffix}`;
   const locationCode = `ROUTE-${suffix}`;
   const barcodeAtomic = `route-atomic-${suffix}`;
   const barcodeRetry = `route-retry-${suffix}`;
@@ -38,10 +40,11 @@ async function main() {
 
   let adminId: string | null = null;
   let userId: string | null = null;
+  let organizationId: string | null = null;
   let locationId: string | null = null;
 
   try {
-    const [admin, user, location] = await Promise.all([
+    const [admin, user] = await Promise.all([
       prisma.user.create({
         data: {
           name: "Route Validation Admin",
@@ -58,12 +61,43 @@ async function main() {
           role: "GENERAL",
         },
       }),
-      prisma.storeLocation.create({
-        data: { code: locationCode, name: "Route validation location", isActive: true },
-      }),
     ]);
     adminId = admin.id;
     userId = user.id;
+
+    const organization = await prisma.organization.create({
+      data: {
+        name: "Route Validation Organization",
+        slug: organizationSlug,
+      },
+    });
+    organizationId = organization.id;
+
+    await prisma.organizationMembership.createMany({
+      data: [
+        { organizationId: organization.id, userId: admin.id, role: "ADMIN", isActive: true },
+        { organizationId: organization.id, userId: user.id, role: "INVENTORY", isActive: true },
+      ],
+    });
+
+    const site = await prisma.site.create({
+      data: {
+        organizationId: organization.id,
+        code: siteCode,
+        name: "Route validation site",
+        type: "STORE",
+        isActive: true,
+      },
+    });
+
+    const location = await prisma.storeLocation.create({
+      data: {
+        siteId: site.id,
+        code: locationCode,
+        name: "Route validation location",
+        isActive: true,
+      },
+    });
     locationId = location.id;
 
     await prisma.product.createMany({
@@ -86,7 +120,7 @@ async function main() {
           method: "POST",
           url: "/api/store-count/sessions",
           headers: auth(adminToken),
-          payload: { name: "Route concurrency validation" },
+          payload: { name: "Route concurrency validation", siteId: site.id },
         }),
       ),
     );
@@ -97,9 +131,9 @@ async function main() {
     assert(sessionIds.size === 1, `concurrent session creation produced ${sessionIds.size} ACTIVE sessions`);
     const sessionId = [...sessionIds][0]!;
     const activeSessionCount = await prisma.storeCountSession.count({
-      where: { startedById: admin.id, status: "ACTIVE" },
+      where: { startedById: admin.id, status: "ACTIVE", siteId: site.id },
     });
-    assert(activeSessionCount === 1, `database contains ${activeSessionCount} ACTIVE sessions for one user`);
+    assert(activeSessionCount === 1, `database contains ${activeSessionCount} ACTIVE sessions for one user/site`);
 
     // Prove the public Product API and Store Count share one catalog. This is a
     // regression guard for the historical /api/items vs /api/products split:
@@ -241,7 +275,7 @@ async function main() {
       method: "POST",
       url: "/api/store-count/sessions",
       headers: auth(userToken),
-      payload: { name: "Second-user session" },
+      payload: { name: "Second-user session", siteId: site.id },
     });
     assert(userSessionResponse.statusCode === 201, `second user session returned ${userSessionResponse.statusCode}: ${userSessionResponse.body}`);
     const userSessionId = parseJson<{ id: string }>(userSessionResponse.body).id;
@@ -294,8 +328,9 @@ async function main() {
     assert(scanCompleted.statusCode === 409, `scan into completed session returned ${scanCompleted.statusCode}, expected 409`);
 
     console.log("Store Count HTTP route validation passed:");
+    console.log("- authorized organization/site membership is enforced for session creation");
     console.log("- Product API create -> barcode lookup -> Store Count scan -> summary uses the same Product");
-    console.log("- 10 concurrent session starts => exactly one ACTIVE session");
+    console.log("- 10 concurrent session starts => exactly one ACTIVE session per user/site");
     console.log("- 20 concurrent unique HTTP scans => quantity 20");
     console.log("- 10 concurrent HTTP retries with one clientScanId => quantity 1");
     console.log("- non-owner scan => 403");
@@ -312,6 +347,7 @@ async function main() {
       where: { barcodeValue: { in: [barcodeAtomic, barcodeRetry, barcodeConflict, barcodeCatalog] } },
     });
     if (locationId) await prisma.storeLocation.deleteMany({ where: { id: locationId } });
+    if (organizationId) await prisma.organization.deleteMany({ where: { id: organizationId } });
     await prisma.user.deleteMany({ where: { email: { in: [adminEmail, userEmail] } } });
     await prisma.$disconnect();
   }
