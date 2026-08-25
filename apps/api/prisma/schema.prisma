@@ -235,17 +235,17 @@ model Item {
   expiryNotifiedAt   DateTime?
   warrantyExpiresAt  DateTime?
   warrantyNotifiedAt DateTime?
-  photoUrl           String?
-  notes              String?
-  wanted             Boolean   @default(false)
-  isActive           Boolean   @default(true)
-  itemType           ItemType      @default(CONSUMABLE)
-  condition          ItemCondition?
-  createdById        String?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  deletedAt          DateTime?
-  lastAuditedAt      DateTime?
+  photoUrl            String?
+  notes               String?
+  wanted              Boolean   @default(false)
+  isActive            Boolean   @default(true)
+  itemType            ItemType      @default(CONSUMABLE)
+  condition           ItemCondition?
+  createdById         String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?
+  lastAuditedAt       DateTime?
 
   location           Location?          @relation(fields: [locationId], references: [id], onDelete: SetNull)
   category           Category?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -393,6 +393,7 @@ model StoreLocation {
   // Legacy global uniqueness is retained during the compatibility phase.
   // A later migration will make siteId required and replace this with @@unique([siteId, code]).
   @@unique([code])
+  @@index([isActive, sortOrder])
   @@index([siteId, isActive, sortOrder])
 }
 
@@ -420,6 +421,7 @@ model Product {
   // barcodeValue remains temporarily for backwards compatibility with the proven
   // Store Count flow. ProductIdentifier is the commercial multi-identifier model.
   @@unique([barcodeValue])
+  @@index([isActive])
   @@index([organizationId, isActive])
   @@index([categoryId])
 }
