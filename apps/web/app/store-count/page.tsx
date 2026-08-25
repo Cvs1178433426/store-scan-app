@@ -80,6 +80,7 @@ export default function StoreCountPage() {
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [manualValue, setManualValue] = useState("");
+  const [manualQuantity, setManualQuantity] = useState("1");
   const [pendingCount, setPendingCount] = useState(0);
   const [failedScans, setFailedScans] = useState<QueuedCountScan[]>([]);
   const [flash, setFlash] = useState<{ kind: "known" | "unknown" | "queued" | "error"; text: string } | null>(null);
@@ -259,11 +260,11 @@ export default function StoreCountPage() {
     }
   }
 
-  async function handleBarcode(rawValue: string) {
+  async function handleBarcode(rawValue: string, quantityDelta = 1) {
     const barcode = rawValue.trim();
-    if (!barcode || !session || !locationId || busyRef.current) return;
+    if (!barcode || !session || !locationId || busyRef.current || quantityDelta < 1 || quantityDelta > 999) return;
     const now = Date.now();
-    if (lastScanRef.current?.value === barcode && now - lastScanRef.current.at < SAME_VALUE_DEBOUNCE_MS) return;
+    if (quantityDelta === 1 && lastScanRef.current?.value === barcode && now - lastScanRef.current.at < SAME_VALUE_DEBOUNCE_MS) return;
     lastScanRef.current = { value: barcode, at: now };
     busyRef.current = true;
     const clientScanId = createCountScanId();
@@ -273,7 +274,7 @@ export default function StoreCountPage() {
     try {
       const entry = await apiJson<CountEntry>(`/api/store-count/sessions/${session.id}/scan`, {
         method: "POST",
-        body: JSON.stringify({ barcodeValue: barcode, locationId, quantityDelta: 1, clientScanId }),
+        body: JSON.stringify({ barcodeValue: barcode, locationId, quantityDelta, clientScanId }),
       });
       setSession((current) => {
         if (!current) return current;
@@ -281,17 +282,19 @@ export default function StoreCountPage() {
       });
       setFlash({
         kind: entry.product ? "known" : "unknown",
-        text: entry.product ? `${entry.product.name} — ${entry.quantity} here` : `Unknown UPC ${barcode} counted — add product details later`,
+        text: entry.product
+          ? `${entry.product.name} — added ${quantityDelta}, ${entry.quantity} here`
+          : `Unknown UPC ${barcode} counted (${quantityDelta}) — add product details later`,
       });
     } catch (error) {
-      enqueueCountScan({ sessionId: session.id, locationId, barcodeValue: barcode, quantityDelta: 1 }, clientScanId);
+      enqueueCountScan({ sessionId: session.id, locationId, barcodeValue: barcode, quantityDelta }, clientScanId);
       if (error instanceof ApiError && [400, 404, 409].includes(error.status)) {
         markCountScanFailed(clientScanId, error.message || `Server rejected scan (${error.status})`);
         refreshQueueState();
-        setFlash({ kind: "error", text: `Scan captured but needs review: ${barcode}` });
+        setFlash({ kind: "error", text: `Count captured but needs review: ${barcode} × ${quantityDelta}` });
       } else {
         refreshQueueState();
-        setFlash({ kind: "queued", text: `Offline — scan safely queued: ${barcode}` });
+        setFlash({ kind: "queued", text: `Offline — count safely queued: ${barcode} × ${quantityDelta}` });
       }
     } finally {
       busyRef.current = false;
@@ -325,6 +328,7 @@ export default function StoreCountPage() {
       if (unresolvedCount > 0) show("Resolve or sync every captured scan before finishing this count.", "error");
       return;
     }
+    if (!window.confirm("Complete and lock this count? After completion, counted quantities cannot be edited.")) return;
     try {
       await apiJson(`/api/store-count/sessions/${session.id}/complete`, { method: "POST" });
       await showSummary();
@@ -356,9 +360,14 @@ export default function StoreCountPage() {
   async function handleManualSubmit(event: FormEvent) {
     event.preventDefault();
     const value = manualValue.trim();
-    if (!value) return;
+    const quantity = Number.parseInt(manualQuantity, 10);
+    if (!value || !Number.isInteger(quantity) || quantity < 1 || quantity > 999) {
+      show("Enter a UPC and a quantity from 1 to 999.", "error");
+      return;
+    }
     setManualValue("");
-    await handleBarcode(value);
+    setManualQuantity("1");
+    await handleBarcode(value, quantity);
   }
 
   if (loading || !user || initializing) return null;
@@ -415,10 +424,23 @@ export default function StoreCountPage() {
                 {flash ? flash.text : currentLocation ? `Ready at ${currentLocation.code} · camera or handheld trigger` : "Configure and select a location first"}
               </div>
 
-              <form onSubmit={handleManualSubmit} style={{ display: "flex", gap: 8 }}>
-                <input inputMode="numeric" value={manualValue} onChange={(event) => setManualValue(event.target.value)} placeholder="Manual UPC" aria-label="Manual UPC" style={{ flex: 1, minHeight: 48 }} />
-                <button type="submit" disabled={!manualValue.trim() || !locationId}>Add</button>
+              <form onSubmit={handleManualSubmit} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 88px auto", gap: 8 }}>
+                <input inputMode="numeric" value={manualValue} onChange={(event) => setManualValue(event.target.value)} placeholder="Manual UPC" aria-label="Manual UPC" style={{ minWidth: 0, minHeight: 48 }} />
+                <input
+                  inputMode="numeric"
+                  type="number"
+                  min={1}
+                  max={999}
+                  step={1}
+                  value={manualQuantity}
+                  onChange={(event) => setManualQuantity(event.target.value)}
+                  aria-label="Quantity"
+                  title="Quantity"
+                  style={{ minWidth: 0, minHeight: 48, textAlign: "center" }}
+                />
+                <button type="submit" disabled={!manualValue.trim() || !locationId}>Add Qty</button>
               </form>
+              <div style={{ fontSize: 12, opacity: 0.68, marginTop: 5 }}>Use quantity for multiple identical units; camera and handheld scans continue to add one each.</div>
 
               {pendingCount > 0 && (
                 <div className="card" style={{ marginTop: 10, padding: 12, textAlign: "center", fontWeight: 800 }}>
