@@ -11,6 +11,57 @@ enum UserRole {
   GENERAL
 }
 
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MANAGER
+  BUYER
+  RECEIVER
+  INVENTORY
+  PICKER
+  CHECKER
+  SHIPPING
+  ACCOUNTING
+  VIEWER
+}
+
+enum SiteType {
+  STORE
+  WAREHOUSE
+  DISTRIBUTION_CENTER
+  OFFICE
+  OTHER
+}
+
+enum ProductIdentifierType {
+  UPC
+  EAN
+  GTIN
+  NDC
+  CUSTOMER_SKU
+  MANUFACTURER_ITEM
+  OTHER
+}
+
+enum ProductPackagingLevel {
+  EACH
+  INNER
+  CASE
+  PALLET
+  OTHER
+}
+
+enum InventoryTransactionType {
+  RECEIVE
+  SHIP
+  TRANSFER_IN
+  TRANSFER_OUT
+  DAMAGE
+  RETURN_TO_VENDOR
+  COUNT_ADJUSTMENT
+  MANUAL_ADJUSTMENT
+}
+
 enum BarcodeSource {
   GENERATED
   EXISTING
@@ -72,11 +123,72 @@ model User {
   tokenVersion Int      @default(0)
   createdAt    DateTime @default(now())
 
-  createdItems       Item[]              @relation("ItemCreatedBy")
-  movements          StockMovement[]
-  pushSubscriptions  PushSubscription[]
-  auditSessions      AuditSession[]
-  storeCountSessions StoreCountSession[]
+  createdItems          Item[]                    @relation("ItemCreatedBy")
+  movements             StockMovement[]
+  pushSubscriptions     PushSubscription[]
+  auditSessions         AuditSession[]
+  storeCountSessions    StoreCountSession[]
+  organizationMemberships OrganizationMembership[]
+  inventoryTransactions InventoryTransaction[]    @relation("InventoryTransactionActor")
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships          OrganizationMembership[]
+  sites                Site[]
+  products             Product[]
+  productIdentifiers   ProductIdentifier[]
+  inventoryTransactions InventoryTransaction[]
+
+  @@index([isActive])
+}
+
+model OrganizationMembership {
+  id             String           @id @default(cuid())
+  organizationId String
+  userId         String
+  role           OrganizationRole @default(VIEWER)
+  isActive       Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId, isActive])
+  @@index([organizationId, role, isActive])
+}
+
+model Site {
+  id             String   @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  type           SiteType @default(STORE)
+  address1       String?
+  address2       String?
+  city           String?
+  region         String?
+  postalCode     String?
+  countryCode    String   @default("US")
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization          Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  storeLocations        StoreLocation[]
+  storeCountSessions    StoreCountSession[]
+  inventoryTransactions InventoryTransaction[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, isActive])
 }
 
 model Location {
@@ -267,41 +379,103 @@ model AuditCheck {
 
 model StoreLocation {
   id        String   @id @default(cuid())
+  siteId    String?
   code      String
   name      String?
   isActive  Boolean  @default(true)
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
 
-  entries StoreCountEntry[]
+  site                  Site?                  @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  entries               StoreCountEntry[]
+  inventoryTransactions InventoryTransaction[]
 
+  // Legacy global uniqueness is retained during the compatibility phase.
+  // A later migration will make siteId required and replace this with @@unique([siteId, code]).
   @@unique([code])
-  @@index([isActive, sortOrder])
+  @@index([siteId, isActive, sortOrder])
 }
 
 model Product {
-  id           String    @id @default(cuid())
-  barcodeValue String?
-  name         String
-  manufacturer String?
-  description  String?
-  packageSize  String?
-  imageUrl     String?
-  categoryId   String?
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  organizationId String?
+  barcodeValue   String?
+  name           String
+  manufacturer   String?
+  description    String?
+  packageSize    String?
+  imageUrl       String?
+  categoryId     String?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  category Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  entries  StoreCountEntry[]
+  organization          Organization?        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  category              Category?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  entries               StoreCountEntry[]
+  identifiers           ProductIdentifier[]
+  packaging             ProductPackaging[]
+  inventoryTransactions InventoryTransaction[]
 
+  // barcodeValue remains temporarily for backwards compatibility with the proven
+  // Store Count flow. ProductIdentifier is the commercial multi-identifier model.
   @@unique([barcodeValue])
+  @@index([organizationId, isActive])
   @@index([categoryId])
-  @@index([isActive])
+}
+
+model ProductPackaging {
+  id               String                @id @default(cuid())
+  productId        String
+  level            ProductPackagingLevel
+  name             String?
+  unitsOfEach      Int                   @default(1)
+  length           Decimal?              @db.Decimal(12, 4)
+  width            Decimal?              @db.Decimal(12, 4)
+  height           Decimal?              @db.Decimal(12, 4)
+  dimensionUnit    String?
+  weight           Decimal?              @db.Decimal(12, 4)
+  weightUnit       String?
+  isOrderable      Boolean               @default(false)
+  isReceivable     Boolean               @default(true)
+  isSellable       Boolean               @default(false)
+  isActive         Boolean               @default(true)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  product               Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  identifiers           ProductIdentifier[]
+  inventoryTransactions InventoryTransaction[]
+
+  @@unique([productId, level, unitsOfEach])
+  @@index([productId, isActive])
+}
+
+model ProductIdentifier {
+  id             String                @id @default(cuid())
+  organizationId String
+  productId      String
+  packagingId    String?
+  type           ProductIdentifierType
+  value          String
+  isPrimary      Boolean               @default(false)
+  source         String?
+  sourceUpdatedAt DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  packaging    ProductPackaging? @relation(fields: [packagingId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, type, value])
+  @@index([productId, isPrimary])
+  @@index([packagingId])
 }
 
 model StoreCountSession {
   id          String                  @id @default(cuid())
+  siteId      String?
   name        String?
   status      StoreCountSessionStatus @default(ACTIVE)
   startedById String?
@@ -309,9 +483,11 @@ model StoreCountSession {
   completedAt DateTime?
   updatedAt   DateTime                @updatedAt
 
+  site      Site?             @relation(fields: [siteId], references: [id], onDelete: Restrict)
   startedBy User?             @relation(fields: [startedById], references: [id], onDelete: SetNull)
   entries   StoreCountEntry[]
 
+  @@index([siteId, status, startedAt])
   @@index([startedById, status])
   @@index([status, startedAt])
 }
@@ -349,4 +525,36 @@ model StoreCountScanLog {
 
   @@index([sessionId])
   @@index([entryId])
+}
+
+model InventoryTransaction {
+  id             String                   @id @default(cuid())
+  organizationId String
+  siteId         String
+  locationId     String
+  productId      String
+  packagingId    String?
+  type           InventoryTransactionType
+  quantity       Decimal                  @db.Decimal(18, 4)
+  unitOfMeasure  String                   @default("EACH")
+  referenceType  String?
+  referenceId    String?
+  actorUserId    String?
+  reason         String?
+  metadata       Json?
+  occurredAt     DateTime                 @default(now())
+  createdAt      DateTime                 @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  site         Site              @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  location     StoreLocation     @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  product      Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  packaging    ProductPackaging? @relation(fields: [packagingId], references: [id], onDelete: SetNull)
+  actor        User?             @relation("InventoryTransactionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, siteId, occurredAt])
+  @@index([locationId, productId, occurredAt])
+  @@index([productId, occurredAt])
+  @@index([referenceType, referenceId])
+  @@index([actorUserId, occurredAt])
 }
