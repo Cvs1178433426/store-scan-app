@@ -8,6 +8,7 @@ import { matchExistingCategory } from "../lib/barcodeLookup/categoryMatch.js";
 
 const createSessionSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
+  siteId: z.string().trim().min(1).optional(),
 });
 
 const scanSchema = z.object({
@@ -71,6 +72,33 @@ export function buildSummaryRows(entries: SummaryEntryInput[]): SummaryRow[] {
   );
 }
 
+async function resolveAuthorizedSite(userId: string, requestedSiteId?: string) {
+  const memberships = await prisma.organizationMembership.findMany({
+    where: {
+      userId,
+      isActive: true,
+      organization: { isActive: true },
+    },
+    select: { organizationId: true },
+  });
+  const organizationIds = memberships.map((membership) => membership.organizationId);
+  const sites = await prisma.site.findMany({
+    where: {
+      isActive: true,
+      organizationId: { in: organizationIds },
+      ...(requestedSiteId ? { id: requestedSiteId } : {}),
+    },
+    orderBy: [{ code: "asc" }, { id: "asc" }],
+    select: { id: true, organizationId: true },
+  });
+
+  if (requestedSiteId) {
+    return sites[0] ?? null;
+  }
+  if (sites.length === 1) return sites[0];
+  return null;
+}
+
 async function assertSessionAccess(
   sessionId: string,
   userId: string,
@@ -80,6 +108,12 @@ async function assertSessionAccess(
   if (!session) return { ok: false, code: 404, error: "count session not found" };
   if (session.startedById !== userId && role !== "ADMIN") {
     return { ok: false, code: 403, error: "you do not have access to this count session" };
+  }
+  if (session.siteId) {
+    const site = await resolveAuthorizedSite(userId, session.siteId);
+    if (!site && role !== "ADMIN") {
+      return { ok: false, code: 403, error: "you do not have access to this count site" };
+    }
   }
   return { ok: true, session };
 }
@@ -132,18 +166,24 @@ export async function storeCountRoutes(app: FastifyInstance) {
     const userId = request.user.sub;
     if (!userId) return reply.code(401).send({ error: "invalid authenticated user" });
 
+    const authorizedSite = await resolveAuthorizedSite(userId, parsed.data.siteId);
+    if (!authorizedSite) {
+      if (parsed.data.siteId) return reply.code(403).send({ error: "you do not have access to that site" });
+      return reply.code(400).send({ error: "select an authorized site before starting a count" });
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       // Serialize session creation for this user across browser tabs/devices.
       // This avoids duplicate ACTIVE sessions without adding a partial unique
       // index that Prisma cannot represent cleanly in schema.prisma.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
       const existing = await tx.storeCountSession.findFirst({
-        where: { status: "ACTIVE", startedById: userId },
+        where: { status: "ACTIVE", startedById: userId, siteId: authorizedSite.id },
         orderBy: { startedAt: "desc" },
       });
       if (existing) return { created: false, session: existing };
       const session = await tx.storeCountSession.create({
-        data: { name: parsed.data.name ?? null, startedById: userId },
+        data: { name: parsed.data.name ?? null, startedById: userId, siteId: authorizedSite.id },
       });
       return { created: true, session };
     });
@@ -202,6 +242,9 @@ export async function storeCountRoutes(app: FastifyInstance) {
     const location = await prisma.storeLocation.findUnique({ where: { id: locationId } });
     if (!location) return reply.code(400).send({ error: "unknown locationId" });
     if (!location.isActive) return reply.code(400).send({ error: "this location is inactive" });
+    if (access.session.siteId && location.siteId !== access.session.siteId) {
+      return reply.code(403).send({ error: "location does not belong to this count site" });
+    }
 
     if (clientScanId) {
       const prior = await findIdempotentEntry(clientScanId, id);
