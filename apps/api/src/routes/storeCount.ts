@@ -291,6 +291,7 @@ export async function storeCountRoutes(app: FastifyInstance) {
 
     const access = await assertSessionAccess(sessionId, userId, role);
     if (!access.ok) return reply.code(access.code).send({ error: access.error });
+    if (access.session.status !== "ACTIVE") return reply.code(409).send({ error: "count session is not active" });
 
     const entry = await prisma.storeCountEntry.findFirst({ where: { id: entryId, sessionId } });
     if (!entry) return reply.code(404).send({ error: "count entry not found" });
