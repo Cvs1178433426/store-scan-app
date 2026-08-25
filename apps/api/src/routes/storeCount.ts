@@ -220,6 +220,14 @@ export async function storeCountRoutes(app: FastifyInstance) {
 
     try {
       const entry = await prisma.$transaction(async (tx) => {
+        // Lock the parent session for the duration of the write. This closes the
+        // race where a request passes the ACTIVE check, a supervisor completes
+        // the count, and the scan otherwise lands after completion.
+        const lockedSession = await tx.$queryRaw<Array<{ status: string }>>`
+          SELECT "status" FROM "StoreCountSession" WHERE "id" = ${id} FOR UPDATE
+        `;
+        if (lockedSession[0]?.status !== "ACTIVE") throw new Error("SESSION_NOT_ACTIVE");
+
         if (clientScanId) {
           const prior = await tx.storeCountScanLog.findUnique({ where: { idempotencyKey: clientScanId } });
           if (prior) {
@@ -269,6 +277,9 @@ export async function storeCountRoutes(app: FastifyInstance) {
       });
       return reply.send(entry);
     } catch (error) {
+      if (error instanceof Error && error.message === "SESSION_NOT_ACTIVE") {
+        return reply.code(409).send({ error: "count session is not active" });
+      }
       if (error instanceof Error && error.message === "IDEMPOTENCY_SESSION_CONFLICT") {
         return reply.code(409).send({ error: "clientScanId was already used for another count session" });
       }
@@ -293,19 +304,39 @@ export async function storeCountRoutes(app: FastifyInstance) {
     if (!access.ok) return reply.code(access.code).send({ error: access.error });
     if (access.session.status !== "ACTIVE") return reply.code(409).send({ error: "count session is not active" });
 
-    const entry = await prisma.storeCountEntry.findFirst({ where: { id: entryId, sessionId } });
-    if (!entry) return reply.code(404).send({ error: "count entry not found" });
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const lockedSession = await tx.$queryRaw<Array<{ status: string }>>`
+          SELECT "status" FROM "StoreCountSession" WHERE "id" = ${sessionId} FOR UPDATE
+        `;
+        if (lockedSession[0]?.status !== "ACTIVE") throw new Error("SESSION_NOT_ACTIVE");
 
-    if (parsed.data.quantity === 0) {
-      await prisma.storeCountEntry.delete({ where: { id: entryId } });
-      return reply.code(204).send();
+        const entry = await tx.storeCountEntry.findFirst({ where: { id: entryId, sessionId } });
+        if (!entry) throw new Error("ENTRY_NOT_FOUND");
+
+        if (parsed.data.quantity === 0) {
+          await tx.storeCountEntry.delete({ where: { id: entryId } });
+          return null;
+        }
+
+        return tx.storeCountEntry.update({
+          where: { id: entryId },
+          data: { quantity: parsed.data.quantity },
+          include: { product: true, location: true },
+        });
+      });
+
+      if (!result) return reply.code(204).send();
+      return result;
+    } catch (error) {
+      if (error instanceof Error && error.message === "SESSION_NOT_ACTIVE") {
+        return reply.code(409).send({ error: "count session is not active" });
+      }
+      if (error instanceof Error && error.message === "ENTRY_NOT_FOUND") {
+        return reply.code(404).send({ error: "count entry not found" });
+      }
+      throw error;
     }
-
-    return prisma.storeCountEntry.update({
-      where: { id: entryId },
-      data: { quantity: parsed.data.quantity },
-      include: { product: true, location: true },
-    });
   });
 
   app.get("/sessions/:id/summary", async (request, reply) => {
