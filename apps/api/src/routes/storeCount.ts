@@ -106,16 +106,24 @@ async function assertSessionAccess(
 ): Promise<{ ok: true; session: NonNullable<SessionRow> } | { ok: false; code: number; error: string }> {
   const session = await prisma.storeCountSession.findUnique({ where: { id: sessionId } });
   if (!session) return { ok: false, code: 404, error: "count session not found" };
-  if (session.startedById !== userId && role !== "ADMIN") {
-    return { ok: false, code: 403, error: "you do not have access to this count session" };
-  }
+
+  // Retail counts are intentionally collaborative. Any active member of the
+  // session's organization may view and contribute scans at that site. Global
+  // ADMIN remains an override for support/recovery scenarios.
   if (session.siteId) {
     const site = await resolveAuthorizedSite(userId, session.siteId);
     if (!site && role !== "ADMIN") {
       return { ok: false, code: 403, error: "you do not have access to this count site" };
     }
+  } else if (session.startedById !== userId && role !== "ADMIN") {
+    // Legacy sessions created before site scoping remain owner-only.
+    return { ok: false, code: 403, error: "you do not have access to this count session" };
   }
   return { ok: true, session };
+}
+
+function canManageSession(session: NonNullable<SessionRow>, userId: string, role: string) {
+  return session.startedById === userId || role === "ADMIN";
 }
 
 async function findOrEnrichProduct(barcodeValue: string) {
@@ -193,6 +201,20 @@ export async function storeCountRoutes(app: FastifyInstance) {
 
   app.get("/sessions/active", async (request) => {
     const userId = request.user.sub;
+    const authorizedSite = await resolveAuthorizedSite(userId);
+    if (authorizedSite) {
+      return prisma.storeCountSession.findFirst({
+        where: { status: "ACTIVE", siteId: authorizedSite.id },
+        orderBy: { startedAt: "desc" },
+        include: {
+          entries: {
+            orderBy: { updatedAt: "desc" },
+            include: { product: true, location: true },
+          },
+        },
+      });
+    }
+
     return prisma.storeCountSession.findFirst({
       where: { status: "ACTIVE", startedById: userId },
       orderBy: { startedAt: "desc" },
@@ -263,9 +285,6 @@ export async function storeCountRoutes(app: FastifyInstance) {
 
     try {
       const entry = await prisma.$transaction(async (tx) => {
-        // Lock the parent session for the duration of the write. This closes the
-        // race where a request passes the ACTIVE check, a supervisor completes
-        // the count, and the scan otherwise lands after completion.
         const lockedSession = await tx.$queryRaw<Array<{ status: string }>>`
           SELECT "status" FROM "StoreCountSession" WHERE "id" = ${id} FOR UPDATE
         `;
@@ -282,9 +301,6 @@ export async function storeCountRoutes(app: FastifyInstance) {
           }
         }
 
-        // Prisma upsert can race on the initial INSERT when multiple HTTP requests
-        // create the same compound key at once. Use PostgreSQL's native ON CONFLICT
-        // so creation and increment are one atomic statement under real contention.
         const now = new Date();
         const rows = await tx.$queryRaw<Array<{ id: string }>>`
           INSERT INTO "StoreCountEntry"
@@ -422,6 +438,9 @@ export async function storeCountRoutes(app: FastifyInstance) {
     if (!userId || !role) return reply.code(401).send({ error: "invalid authenticated user" });
     const access = await assertSessionAccess(id, userId, role);
     if (!access.ok) return reply.code(access.code).send({ error: access.error });
+    if (!canManageSession(access.session, userId, role)) {
+      return reply.code(403).send({ error: "only the count owner or an administrator can complete this session" });
+    }
     if (access.session.status !== "ACTIVE") return reply.code(409).send({ error: "count session is not active" });
 
     return prisma.storeCountSession.update({
@@ -437,6 +456,9 @@ export async function storeCountRoutes(app: FastifyInstance) {
     if (!userId || !role) return reply.code(401).send({ error: "invalid authenticated user" });
     const access = await assertSessionAccess(id, userId, role);
     if (!access.ok) return reply.code(access.code).send({ error: access.error });
+    if (!canManageSession(access.session, userId, role)) {
+      return reply.code(403).send({ error: "only the count owner or an administrator can cancel this session" });
+    }
     if (access.session.status !== "ACTIVE") return reply.code(409).send({ error: "count session is not active" });
 
     return prisma.storeCountSession.update({
