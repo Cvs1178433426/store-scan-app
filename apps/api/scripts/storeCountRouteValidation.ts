@@ -320,11 +320,20 @@ async function main() {
     console.log("- active same-organization collaborators can contribute to the shared site count");
     console.log("- clientScanId reuse across sessions => HTTP 409");
   } finally {
-    // Delete test sessions first so their cascading entries/scan logs no longer
-    // reference the location. StoreLocation intentionally uses RESTRICT to
-    // prevent production count history from being orphaned.
+    // Remove every test session for this organization's sites first. Some test
+    // sessions intentionally have no entries (for example, the cross-session
+    // idempotency case), so deleting only sessions discovered through entries
+    // can leave a StoreCountSession.siteId FK behind and make fixture cleanup fail.
+    if (organizationId) {
+      const siteIds = (await prisma.site.findMany({
+        where: { organizationId },
+        select: { id: true },
+      })).map((site) => site.id);
+      if (siteIds.length > 0) {
+        await prisma.storeCountSession.deleteMany({ where: { siteId: { in: siteIds } } });
+      }
+    }
     if (locationId) {
-      await prisma.storeCountSession.deleteMany({ where: { entries: { some: { locationId } } } });
       await prisma.storeLocation.deleteMany({ where: { id: locationId } });
     }
     if (organizationId) {
