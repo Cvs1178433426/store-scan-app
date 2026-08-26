@@ -320,7 +320,13 @@ async function main() {
     console.log("- active same-organization collaborators can contribute to the shared site count");
     console.log("- clientScanId reuse across sessions => HTTP 409");
   } finally {
-    if (locationId) await prisma.storeLocation.deleteMany({ where: { id: locationId } });
+    // Delete test sessions first so their cascading entries/scan logs no longer
+    // reference the location. StoreLocation intentionally uses RESTRICT to
+    // prevent production count history from being orphaned.
+    if (locationId) {
+      await prisma.storeCountSession.deleteMany({ where: { entries: { some: { locationId } } } });
+      await prisma.storeLocation.deleteMany({ where: { id: locationId } });
+    }
     if (organizationId) {
       await prisma.organizationMembership.deleteMany({ where: { organizationId } });
       await prisma.site.deleteMany({ where: { organizationId } });
