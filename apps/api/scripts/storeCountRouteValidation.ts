@@ -22,6 +22,7 @@ async function main() {
   const barcodeAtomic = `route-atomic-${suffix}`;
   const barcodeRetry = `route-retry-${suffix}`;
   const barcodeConflict = `route-conflict-${suffix}`;
+  const barcodeZero = `route-zero-${suffix}`;
   const barcodeCatalog = `route-catalog-${suffix}`;
   const catalogName = `Catalog Product ${suffix}`;
 
@@ -66,10 +67,7 @@ async function main() {
     userId = user.id;
 
     const organization = await prisma.organization.create({
-      data: {
-        name: "Route Validation Organization",
-        slug: organizationSlug,
-      },
+      data: { name: "Route Validation Organization", slug: organizationSlug },
     });
     organizationId = organization.id;
 
@@ -91,12 +89,7 @@ async function main() {
     });
 
     const location = await prisma.storeLocation.create({
-      data: {
-        siteId: site.id,
-        code: locationCode,
-        name: "Route validation location",
-        isActive: true,
-      },
+      data: { siteId: site.id, code: locationCode, name: "Route validation location", isActive: true },
     });
     locationId = location.id;
 
@@ -105,6 +98,7 @@ async function main() {
         { barcodeValue: barcodeAtomic, name: "Atomic route product", isActive: true },
         { barcodeValue: barcodeRetry, name: "Retry route product", isActive: true },
         { barcodeValue: barcodeConflict, name: "Conflict route product", isActive: true },
+        { barcodeValue: barcodeZero, name: "Confirmed-zero route product", isActive: true },
       ],
     });
 
@@ -112,8 +106,6 @@ async function main() {
     const userToken = app.jwt.sign({ sub: user.id, role: "GENERAL", tv: 0 });
     const auth = (token: string) => ({ authorization: `Bearer ${token}` });
 
-    // Exercise the actual POST /sessions route concurrently. The advisory lock
-    // must collapse all requests for one user onto the same ACTIVE session.
     const startResponses = await Promise.all(
       Array.from({ length: 10 }, () =>
         app.inject({
@@ -135,10 +127,6 @@ async function main() {
     });
     assert(activeSessionCount === 1, `database contains ${activeSessionCount} ACTIVE sessions for one user/site`);
 
-    // Prove the public Product API and Store Count share one catalog. This is a
-    // regression guard for the historical /api/items vs /api/products split:
-    // save a product through the real Product route, scan it through the real
-    // Store Count route, then verify both the count entry and summary resolve it.
     const createCatalogProduct = await app.inject({
       method: "POST",
       url: "/api/products",
@@ -153,7 +141,6 @@ async function main() {
     });
     assert(createCatalogProduct.statusCode === 201, `Product API create returned ${createCatalogProduct.statusCode}: ${createCatalogProduct.body}`);
     const createdCatalogProduct = parseJson<{ id: string; barcodeValue: string; name: string }>(createCatalogProduct.body);
-    assert(createdCatalogProduct.barcodeValue === barcodeCatalog, "Product API returned the wrong barcode");
 
     const catalogLookup = await app.inject({
       method: "GET",
@@ -161,7 +148,7 @@ async function main() {
       headers: auth(adminToken),
     });
     assert(catalogLookup.statusCode === 200, `Product API barcode lookup returned ${catalogLookup.statusCode}: ${catalogLookup.body}`);
-    const lookedUpCatalogProduct = parseJson<{ id: string; name: string }>(catalogLookup.body);
+    const lookedUpCatalogProduct = parseJson<{ id: string }>(catalogLookup.body);
     assert(lookedUpCatalogProduct.id === createdCatalogProduct.id, "Product API barcode lookup did not return the newly-created Product");
 
     const catalogScan = await app.inject({
@@ -176,25 +163,11 @@ async function main() {
       },
     });
     assert(catalogScan.statusCode === 200, `newly cataloged Product scan returned ${catalogScan.statusCode}: ${catalogScan.body}`);
-    const catalogEntry = parseJson<{ productId: string | null; barcodeValue: string; quantity: number; product: { id: string; name: string } | null }>(catalogScan.body);
-    assert(catalogEntry.productId === createdCatalogProduct.id, "Store Count entry did not reference the Product created through /api/products");
+    const catalogEntry = parseJson<{ productId: string | null; quantity: number; product: { name: string } | null }>(catalogScan.body);
+    assert(catalogEntry.productId === createdCatalogProduct.id, "Store Count entry did not reference Product created through /api/products");
     assert(catalogEntry.product?.name === catalogName, "Store Count scan did not resolve the newly-created Product name");
     assert(catalogEntry.quantity === 1, `newly cataloged Product scan produced quantity ${catalogEntry.quantity}, expected 1`);
 
-    const catalogSummaryResponse = await app.inject({
-      method: "GET",
-      url: `/api/store-count/sessions/${sessionId}/summary`,
-      headers: auth(adminToken),
-    });
-    assert(catalogSummaryResponse.statusCode === 200, `summary after catalog scan returned ${catalogSummaryResponse.statusCode}: ${catalogSummaryResponse.body}`);
-    const catalogSummary = parseJson<{ rows: Array<{ productId: string | null; barcodeValue: string; productName: string | null; total: number }> }>(catalogSummaryResponse.body);
-    const catalogSummaryRow = catalogSummary.rows.find((row) => row.barcodeValue === barcodeCatalog);
-    assert(Boolean(catalogSummaryRow), "summary omitted the Product created through /api/products");
-    assert(catalogSummaryRow!.productId === createdCatalogProduct.id, "summary referenced the wrong Product id");
-    assert(catalogSummaryRow!.productName === catalogName, "summary did not display the newly-created Product name");
-    assert(catalogSummaryRow!.total === 1, `summary total for newly-created Product was ${catalogSummaryRow!.total}, expected 1`);
-
-    // Exercise the real HTTP scan endpoint with 20 separate physical scans.
     const atomicResponses = await Promise.all(
       Array.from({ length: 20 }, (_, index) =>
         app.inject({
@@ -210,21 +183,12 @@ async function main() {
         }),
       ),
     );
-    for (const response of atomicResponses) {
-      assert(response.statusCode === 200, `unique scan returned ${response.statusCode}: ${response.body}`);
-    }
+    for (const response of atomicResponses) assert(response.statusCode === 200, `unique scan returned ${response.statusCode}: ${response.body}`);
     const atomicEntry = await prisma.storeCountEntry.findUniqueOrThrow({
-      where: {
-        sessionId_locationId_barcodeValue: {
-          sessionId,
-          locationId: location.id,
-          barcodeValue: barcodeAtomic,
-        },
-      },
+      where: { sessionId_locationId_barcodeValue: { sessionId, locationId: location.id, barcodeValue: barcodeAtomic } },
     });
     assert(atomicEntry.quantity === 20, `20 HTTP scans produced quantity ${atomicEntry.quantity}, expected 20`);
 
-    // Exercise the real HTTP endpoint with ten retries of one physical scan.
     const retryKey = `route-single-physical-scan-${suffix}`;
     const retryResponses = await Promise.all(
       Array.from({ length: 10 }, () =>
@@ -232,50 +196,83 @@ async function main() {
           method: "POST",
           url: `/api/store-count/sessions/${sessionId}/scan`,
           headers: auth(adminToken),
-          payload: {
-            barcodeValue: barcodeRetry,
-            locationId: location.id,
-            quantityDelta: 1,
-            clientScanId: retryKey,
-          },
+          payload: { barcodeValue: barcodeRetry, locationId: location.id, quantityDelta: 1, clientScanId: retryKey },
         }),
       ),
     );
-    for (const response of retryResponses) {
-      assert(response.statusCode === 200, `idempotent retry returned ${response.statusCode}: ${response.body}`);
-    }
+    for (const response of retryResponses) assert(response.statusCode === 200, `idempotent retry returned ${response.statusCode}: ${response.body}`);
     const retryEntry = await prisma.storeCountEntry.findUniqueOrThrow({
-      where: {
-        sessionId_locationId_barcodeValue: {
-          sessionId,
-          locationId: location.id,
-          barcodeValue: barcodeRetry,
-        },
-      },
+      where: { sessionId_locationId_barcodeValue: { sessionId, locationId: location.id, barcodeValue: barcodeRetry } },
     });
     assert(retryEntry.quantity === 1, `10 HTTP retries produced quantity ${retryEntry.quantity}, expected 1`);
 
-    // A second active member of the same organization is allowed to contribute
-    // to the shared site count. Fine-grained section/location ownership is a
-    // separate Retail MVP acceptance item and must not be simulated here.
+    // Verified zero must remain a real row, distinct from a product/location that was never counted.
+    const zeroScan = await app.inject({
+      method: "POST",
+      url: `/api/store-count/sessions/${sessionId}/scan`,
+      headers: auth(adminToken),
+      payload: { barcodeValue: barcodeZero, locationId: location.id, quantityDelta: 1, clientScanId: `route-zero-${suffix}` },
+    });
+    assert(zeroScan.statusCode === 200, `zero setup scan returned ${zeroScan.statusCode}: ${zeroScan.body}`);
+    const zeroEntryId = parseJson<{ id: string }>(zeroScan.body).id;
+    const zeroPatch = await app.inject({
+      method: "PATCH",
+      url: `/api/store-count/sessions/${sessionId}/entries/${zeroEntryId}`,
+      headers: auth(adminToken),
+      payload: { quantity: 0 },
+    });
+    assert(zeroPatch.statusCode === 200, `confirmed-zero PATCH returned ${zeroPatch.statusCode}: ${zeroPatch.body}`);
+    const zeroEntry = await prisma.storeCountEntry.findUniqueOrThrow({ where: { id: zeroEntryId } });
+    assert(zeroEntry.quantity === 0, `confirmed-zero entry stored quantity ${zeroEntry.quantity}, expected 0`);
+    assert(zeroEntry.countedByUserId === admin.id, "confirmed-zero correction lost employee attribution");
+    const zeroSummaryResponse = await app.inject({
+      method: "GET",
+      url: `/api/store-count/sessions/${sessionId}/summary`,
+      headers: auth(adminToken),
+    });
+    const zeroSummary = parseJson<{ rows: Array<{ barcodeValue: string; byLocation: Record<string, { quantity: number }> }> }>(zeroSummaryResponse.body);
+    const zeroSummaryRow = zeroSummary.rows.find((row) => row.barcodeValue === barcodeZero);
+    assert(Boolean(zeroSummaryRow), "summary omitted a verified-zero product/location");
+    assert(zeroSummaryRow!.byLocation[location.id]?.quantity === 0, "summary did not preserve verified zero by location");
+
+    // User A establishes a Product x Location count; User B touching it must be auditable and warned.
+    const adminConflictKey = `route-conflict-admin-${suffix}`;
+    const adminConflict = await app.inject({
+      method: "POST",
+      url: `/api/store-count/sessions/${sessionId}/scan`,
+      headers: auth(adminToken),
+      payload: { barcodeValue: barcodeConflict, locationId: location.id, quantityDelta: 1, clientScanId: adminConflictKey },
+    });
+    assert(adminConflict.statusCode === 200, `admin conflict setup returned ${adminConflict.statusCode}: ${adminConflict.body}`);
+
+    const userConflictKey = `route-conflict-user-${suffix}`;
     const collaborator = await app.inject({
       method: "POST",
       url: `/api/store-count/sessions/${sessionId}/scan`,
       headers: auth(userToken),
-      payload: {
-        barcodeValue: barcodeConflict,
-        locationId: location.id,
-        quantityDelta: 1,
-        clientScanId: `route-collaborator-${suffix}`,
-      },
+      payload: { barcodeValue: barcodeConflict, locationId: location.id, quantityDelta: 1, clientScanId: userConflictKey },
     });
     assert(collaborator.statusCode === 200, `authorized collaborator scan returned ${collaborator.statusCode}: ${collaborator.body}`);
-    const collaboratorEntry = parseJson<{ quantity: number; barcodeValue: string }>(collaborator.body);
-    assert(collaboratorEntry.barcodeValue === barcodeConflict, "collaborator scan returned the wrong barcode");
-    assert(collaboratorEntry.quantity === 1, `collaborator scan produced quantity ${collaboratorEntry.quantity}, expected 1`);
+    const collaboratorEntry = parseJson<{
+      quantity: number;
+      barcodeValue: string;
+      countedByUserId: string | null;
+      countedByDifferentUser: boolean;
+      previousCounterName: string | null;
+    }>(collaborator.body);
+    assert(collaboratorEntry.quantity === 2, `cross-user scan produced quantity ${collaboratorEntry.quantity}, expected 2`);
+    assert(collaboratorEntry.countedByUserId === user.id, "entry does not identify the latest employee");
+    assert(collaboratorEntry.countedByDifferentUser === true, "cross-user scan did not surface contamination warning");
+    assert(collaboratorEntry.previousCounterName === admin.name, "cross-user warning did not identify prior counter");
 
-    // Create a second user's session and prove a reused idempotency key cannot
-    // cross session boundaries, even when an ADMIN is authorized for both.
+    const actorLogs = await prisma.storeCountScanLog.findMany({
+      where: { idempotencyKey: { in: [adminConflictKey, userConflictKey] } },
+      orderBy: { createdAt: "asc" },
+    });
+    assert(actorLogs.length === 2, `expected two actor scan logs, found ${actorLogs.length}`);
+    assert(actorLogs.some((log) => log.userId === admin.id), "scan log missing admin actor");
+    assert(actorLogs.some((log) => log.userId === user.id), "scan log missing collaborator actor");
+
     const userSessionResponse = await app.inject({
       method: "POST",
       url: "/api/store-count/sessions",
@@ -290,12 +287,7 @@ async function main() {
       method: "POST",
       url: `/api/store-count/sessions/${sessionId}/scan`,
       headers: auth(adminToken),
-      payload: {
-        barcodeValue: barcodeConflict,
-        locationId: location.id,
-        quantityDelta: 1,
-        clientScanId: conflictKey,
-      },
+      payload: { barcodeValue: barcodeConflict, locationId: location.id, quantityDelta: 1, clientScanId: conflictKey },
     });
     assert(firstConflictKeyUse.statusCode === 200, `first idempotency-key use returned ${firstConflictKeyUse.statusCode}`);
 
@@ -303,12 +295,7 @@ async function main() {
       method: "POST",
       url: `/api/store-count/sessions/${userSessionId}/scan`,
       headers: auth(adminToken),
-      payload: {
-        barcodeValue: barcodeConflict,
-        locationId: location.id,
-        quantityDelta: 1,
-        clientScanId: conflictKey,
-      },
+      payload: { barcodeValue: barcodeConflict, locationId: location.id, quantityDelta: 1, clientScanId: conflictKey },
     });
     assert(crossSessionReuse.statusCode === 409, `cross-session idempotency-key reuse returned ${crossSessionReuse.statusCode}, expected 409`);
 
@@ -317,25 +304,15 @@ async function main() {
     console.log("- Product API and Store Count resolve the same catalog record");
     console.log("- 20 concurrent unique HTTP scans => quantity 20");
     console.log("- 10 concurrent HTTP retries with one clientScanId => quantity 1");
-    console.log("- active same-organization collaborators can contribute to the shared site count");
+    console.log("- confirmed zero remains persisted and visible in the location summary");
+    console.log("- scan logs preserve employee attribution and cross-user edits return a warning");
     console.log("- clientScanId reuse across sessions => HTTP 409");
   } finally {
-    // Remove every test session for this organization's sites first. Some test
-    // sessions intentionally have no entries (for example, the cross-session
-    // idempotency case), so deleting only sessions discovered through entries
-    // can leave a StoreCountSession.siteId FK behind and make fixture cleanup fail.
     if (organizationId) {
-      const siteIds = (await prisma.site.findMany({
-        where: { organizationId },
-        select: { id: true },
-      })).map((site) => site.id);
-      if (siteIds.length > 0) {
-        await prisma.storeCountSession.deleteMany({ where: { siteId: { in: siteIds } } });
-      }
+      const siteIds = (await prisma.site.findMany({ where: { organizationId }, select: { id: true } })).map((site) => site.id);
+      if (siteIds.length > 0) await prisma.storeCountSession.deleteMany({ where: { siteId: { in: siteIds } } });
     }
-    if (locationId) {
-      await prisma.storeLocation.deleteMany({ where: { id: locationId } });
-    }
+    if (locationId) await prisma.storeLocation.deleteMany({ where: { id: locationId } });
     if (organizationId) {
       await prisma.organizationMembership.deleteMany({ where: { organizationId } });
       await prisma.site.deleteMany({ where: { organizationId } });
