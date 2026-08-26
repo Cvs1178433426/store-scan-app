@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseCsv } from "../lib/csv.js";
 import { buildStoreCountCsv } from "./storeCountExport.js";
 
 describe("buildStoreCountCsv", () => {
@@ -35,22 +36,34 @@ describe("buildStoreCountCsv", () => {
       ],
     });
 
-    const lines = csv.trim().split("\n");
-    expect(lines).toHaveLength(3);
-    expect(lines[0]).toContain('"quantity"');
-    expect(lines[1]).toContain('"Aisle 1, Final"');
-    expect(lines[1]).toContain('"Front, Shelf"');
-    expect(lines[1]).toContain('"Widget ""Large"""');
-    expect(lines[1]).toContain('"7"');
-    expect(lines[2]).toContain('"999999999999"');
-    expect(lines[2]).toContain('"3"');
-    expect(lines[2]).toContain('"UNKNOWN_UPC"');
+    const parsed = parseCsv(csv);
+    expect(parsed).toHaveLength(3);
+    const header = parsed[0];
+    const dataRows = parsed.slice(1);
+    const index = (name: string) => {
+      const column = header.indexOf(name);
+      expect(column).toBeGreaterThanOrEqual(0);
+      return column;
+    };
 
-    const exportedQuantities = lines.slice(1).map((line) => {
-      const cells = line.match(/(?:^|,)("(?:[^"]|"")*")/g) ?? [];
-      const quantityCell = cells[13]?.replace(/^,?"|"$/g, "");
-      return Number(quantityCell);
-    });
+    const sessionName = index("session_name");
+    const upc = index("upc");
+    const description = index("description");
+    const locationName = index("location_name");
+    const quantity = index("quantity");
+    const exception = index("exception");
+
+    expect(dataRows[0][sessionName]).toBe("Aisle 1, Final");
+    expect(dataRows[0][locationName]).toBe("Front, Shelf");
+    expect(dataRows[0][description]).toBe('Widget "Large"');
+    expect(dataRows[0][upc]).toBe("012345678905");
+    expect(Number(dataRows[0][quantity])).toBe(7);
+
+    expect(dataRows[1][upc]).toBe("999999999999");
+    expect(Number(dataRows[1][quantity])).toBe(3);
+    expect(dataRows[1][exception]).toBe("UNKNOWN_UPC");
+
+    const exportedQuantities = dataRows.map((row) => Number(row[quantity]));
     expect(exportedQuantities.reduce((sum, value) => sum + value, 0)).toBe(10);
   });
 });
