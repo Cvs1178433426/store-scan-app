@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { encodeCsvRow } from "../lib/csv.js";
 import { prisma } from "../lib/prisma.js";
 
 export type StoreCountExportEntry = {
@@ -9,15 +10,6 @@ export type StoreCountExportEntry = {
   location: { code: string; name: string | null };
   product: { name: string; manufacturer: string | null; packageSize: string | null } | null;
 };
-
-function csvCell(value: unknown): string {
-  let text = value == null ? "" : String(value);
-  // Spreadsheet applications may evaluate cells beginning with these characters
-  // as formulas even when the CSV field itself is quoted. Prefix untrusted text
-  // so exported inventory data remains inert when opened in Excel/Sheets.
-  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
-  return `"${text.replaceAll('"', '""')}"`;
-}
 
 export function buildStoreCountCsv(input: {
   session: {
@@ -75,7 +67,7 @@ export function buildStoreCountCsv(input: {
     entry.product ? "" : "UNKNOWN_UPC",
   ]);
 
-  return [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\n") + "\n";
+  return encodeCsvRow(headers) + rows.map((row) => encodeCsvRow(row)).join("");
 }
 
 export async function storeCountExportRoutes(app: FastifyInstance) {
