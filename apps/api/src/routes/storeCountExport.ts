@@ -11,7 +11,11 @@ export type StoreCountExportEntry = {
 };
 
 function csvCell(value: unknown): string {
-  const text = value == null ? "" : String(value);
+  let text = value == null ? "" : String(value);
+  // Spreadsheet applications may evaluate cells beginning with these characters
+  // as formulas even when the CSV field itself is quoted. Prefix untrusted text
+  // so exported inventory data remains inert when opened in Excel/Sheets.
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
   return `"${text.replaceAll('"', '""')}"`;
 }
 
