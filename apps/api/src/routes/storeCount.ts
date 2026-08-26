@@ -92,9 +92,7 @@ async function resolveAuthorizedSite(userId: string, requestedSiteId?: string) {
     select: { id: true, organizationId: true },
   });
 
-  if (requestedSiteId) {
-    return sites[0] ?? null;
-  }
+  if (requestedSiteId) return sites[0] ?? null;
   if (sites.length === 1) return sites[0];
   return null;
 }
@@ -107,16 +105,12 @@ async function assertSessionAccess(
   const session = await prisma.storeCountSession.findUnique({ where: { id: sessionId } });
   if (!session) return { ok: false, code: 404, error: "count session not found" };
 
-  // Retail counts are intentionally collaborative. Any active member of the
-  // session's organization may view and contribute scans at that site. Global
-  // ADMIN remains an override for support/recovery scenarios.
   if (session.siteId) {
     const site = await resolveAuthorizedSite(userId, session.siteId);
     if (!site && role !== "ADMIN") {
       return { ok: false, code: 403, error: "you do not have access to this count site" };
     }
   } else if (session.startedById !== userId && role !== "ADMIN") {
-    // Legacy sessions created before site scoping remain owner-only.
     return { ok: false, code: 403, error: "you do not have access to this count session" };
   }
   return { ok: true, session };
@@ -158,7 +152,7 @@ async function findOrEnrichProduct(barcodeValue: string) {
 async function findIdempotentEntry(clientScanId: string, sessionId: string) {
   const log = await prisma.storeCountScanLog.findUnique({
     where: { idempotencyKey: clientScanId },
-    include: { entry: { include: { product: true, location: true } } },
+    include: { entry: { include: { product: true, location: true, countedBy: { select: { id: true, name: true } } } } },
   });
   if (!log) return null;
   if (log.sessionId !== sessionId) return "conflict" as const;
@@ -181,9 +175,6 @@ export async function storeCountRoutes(app: FastifyInstance) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      // Serialize session creation for this user across browser tabs/devices.
-      // This avoids duplicate ACTIVE sessions without adding a partial unique
-      // index that Prisma cannot represent cleanly in schema.prisma.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
       const existing = await tx.storeCountSession.findFirst({
         where: { status: "ACTIVE", startedById: userId, siteId: authorizedSite.id },
@@ -209,7 +200,7 @@ export async function storeCountRoutes(app: FastifyInstance) {
         include: {
           entries: {
             orderBy: { updatedAt: "desc" },
-            include: { product: true, location: true },
+            include: { product: true, location: true, countedBy: { select: { id: true, name: true } } },
           },
         },
       });
@@ -221,7 +212,7 @@ export async function storeCountRoutes(app: FastifyInstance) {
       include: {
         entries: {
           orderBy: { updatedAt: "desc" },
-          include: { product: true, location: true },
+          include: { product: true, location: true, countedBy: { select: { id: true, name: true } } },
         },
       },
     });
@@ -240,7 +231,11 @@ export async function storeCountRoutes(app: FastifyInstance) {
       include: {
         entries: {
           orderBy: [{ locationId: "asc" }, { updatedAt: "desc" }],
-          include: { product: { include: { category: true } }, location: true },
+          include: {
+            product: { include: { category: true } },
+            location: true,
+            countedBy: { select: { id: true, name: true } },
+          },
         },
       },
     });
@@ -284,7 +279,7 @@ export async function storeCountRoutes(app: FastifyInstance) {
     }
 
     try {
-      const entry = await prisma.$transaction(async (tx) => {
+      const result = await prisma.$transaction(async (tx) => {
         const lockedSession = await tx.$queryRaw<Array<{ status: string }>>`
           SELECT "status" FROM "StoreCountSession" WHERE "id" = ${id} FOR UPDATE
         `;
@@ -294,23 +289,34 @@ export async function storeCountRoutes(app: FastifyInstance) {
           const prior = await tx.storeCountScanLog.findUnique({ where: { idempotencyKey: clientScanId } });
           if (prior) {
             if (prior.sessionId !== id) throw new Error("IDEMPOTENCY_SESSION_CONFLICT");
-            return tx.storeCountEntry.findUniqueOrThrow({
+            const priorEntry = await tx.storeCountEntry.findUniqueOrThrow({
               where: { id: prior.entryId },
-              include: { product: true, location: true },
+              include: { product: true, location: true, countedBy: { select: { id: true, name: true } } },
             });
+            return { entry: priorEntry, countedByDifferentUser: false, previousCounterName: null };
           }
         }
+
+        const previousEntry = await tx.storeCountEntry.findUnique({
+          where: {
+            sessionId_locationId_barcodeValue: { sessionId: id, locationId, barcodeValue },
+          },
+          include: { countedBy: { select: { id: true, name: true } } },
+        });
+        const countedByDifferentUser = Boolean(previousEntry?.countedByUserId && previousEntry.countedByUserId !== userId);
+        const previousCounterName = countedByDifferentUser ? previousEntry?.countedBy?.name ?? null : null;
 
         const now = new Date();
         const rows = await tx.$queryRaw<Array<{ id: string }>>`
           INSERT INTO "StoreCountEntry"
-            ("id", "sessionId", "productId", "barcodeValue", "locationId", "quantity", "scannedAt", "updatedAt")
+            ("id", "sessionId", "productId", "barcodeValue", "locationId", "quantity", "countedByUserId", "scannedAt", "updatedAt")
           VALUES
-            (${randomUUID()}, ${id}, ${product?.id ?? null}, ${barcodeValue}, ${locationId}, ${quantityDelta}, ${now}, ${now})
+            (${randomUUID()}, ${id}, ${product?.id ?? null}, ${barcodeValue}, ${locationId}, ${quantityDelta}, ${userId}, ${now}, ${now})
           ON CONFLICT ("sessionId", "locationId", "barcodeValue")
           DO UPDATE SET
             "quantity" = "StoreCountEntry"."quantity" + EXCLUDED."quantity",
             "productId" = COALESCE(EXCLUDED."productId", "StoreCountEntry"."productId"),
+            "countedByUserId" = EXCLUDED."countedByUserId",
             "scannedAt" = EXCLUDED."scannedAt",
             "updatedAt" = EXCLUDED."updatedAt"
           RETURNING "id"
@@ -319,7 +325,7 @@ export async function storeCountRoutes(app: FastifyInstance) {
         if (!countedId) throw new Error("STORE_COUNT_ENTRY_WRITE_FAILED");
         const counted = await tx.storeCountEntry.findUniqueOrThrow({
           where: { id: countedId },
-          include: { product: true, location: true },
+          include: { product: true, location: true, countedBy: { select: { id: true, name: true } } },
         });
 
         if (clientScanId) {
@@ -328,13 +334,14 @@ export async function storeCountRoutes(app: FastifyInstance) {
               idempotencyKey: clientScanId,
               entryId: counted.id,
               sessionId: id,
+              userId,
               quantityDelta,
             },
           });
         }
-        return counted;
+        return { entry: counted, countedByDifferentUser, previousCounterName };
       });
-      return reply.send(entry);
+      return reply.send({ ...result.entry, countedByDifferentUser: result.countedByDifferentUser, previousCounterName: result.previousCounterName });
     } catch (error) {
       if (error instanceof Error && error.message === "SESSION_NOT_ACTIVE") {
         return reply.code(409).send({ error: "count session is not active" });
@@ -364,7 +371,7 @@ export async function storeCountRoutes(app: FastifyInstance) {
     if (access.session.status !== "ACTIVE") return reply.code(409).send({ error: "count session is not active" });
 
     try {
-      const result = await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx) => {
         const lockedSession = await tx.$queryRaw<Array<{ status: string }>>`
           SELECT "status" FROM "StoreCountSession" WHERE "id" = ${sessionId} FOR UPDATE
         `;
@@ -373,20 +380,12 @@ export async function storeCountRoutes(app: FastifyInstance) {
         const entry = await tx.storeCountEntry.findFirst({ where: { id: entryId, sessionId } });
         if (!entry) throw new Error("ENTRY_NOT_FOUND");
 
-        if (parsed.data.quantity === 0) {
-          await tx.storeCountEntry.delete({ where: { id: entryId } });
-          return null;
-        }
-
         return tx.storeCountEntry.update({
           where: { id: entryId },
-          data: { quantity: parsed.data.quantity },
-          include: { product: true, location: true },
+          data: { quantity: parsed.data.quantity, countedByUserId: userId, scannedAt: new Date() },
+          include: { product: true, location: true, countedBy: { select: { id: true, name: true } } },
         });
       });
-
-      if (!result) return reply.code(204).send();
-      return result;
     } catch (error) {
       if (error instanceof Error && error.message === "SESSION_NOT_ACTIVE") {
         return reply.code(409).send({ error: "count session is not active" });
