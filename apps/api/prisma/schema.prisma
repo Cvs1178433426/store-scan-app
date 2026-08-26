@@ -123,13 +123,15 @@ model User {
   tokenVersion Int      @default(0)
   createdAt    DateTime @default(now())
 
-  createdItems          Item[]                    @relation("ItemCreatedBy")
-  movements             StockMovement[]
-  pushSubscriptions     PushSubscription[]
-  auditSessions         AuditSession[]
-  storeCountSessions    StoreCountSession[]
+  createdItems            Item[]                    @relation("ItemCreatedBy")
+  movements               StockMovement[]
+  pushSubscriptions       PushSubscription[]
+  auditSessions           AuditSession[]
+  storeCountSessions      StoreCountSession[]
+  storeCountEntriesCounted StoreCountEntry[]         @relation("StoreCountEntryCounter")
+  storeCountScanLogs      StoreCountScanLog[]        @relation("StoreCountScanActor")
   organizationMemberships OrganizationMembership[]
-  inventoryTransactions InventoryTransaction[]    @relation("InventoryTransactionActor")
+  inventoryTransactions  InventoryTransaction[]     @relation("InventoryTransactionActor")
 }
 
 model Organization {
@@ -140,10 +142,10 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships          OrganizationMembership[]
-  sites                Site[]
-  products             Product[]
-  productIdentifiers   ProductIdentifier[]
+  memberships           OrganizationMembership[]
+  sites                 Site[]
+  products              Product[]
+  productIdentifiers    ProductIdentifier[]
   inventoryTransactions InventoryTransaction[]
 
   @@index([isActive])
@@ -454,17 +456,17 @@ model ProductPackaging {
 }
 
 model ProductIdentifier {
-  id             String                @id @default(cuid())
-  organizationId String
-  productId      String
-  packagingId    String?
-  type           ProductIdentifierType
-  value          String
-  isPrimary      Boolean               @default(false)
-  source         String?
+  id              String                @id @default(cuid())
+  organizationId  String
+  productId       String
+  packagingId     String?
+  type            ProductIdentifierType
+  value           String
+  isPrimary       Boolean               @default(false)
+  source          String?
   sourceUpdatedAt DateTime?
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   product      Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -495,38 +497,44 @@ model StoreCountSession {
 }
 
 model StoreCountEntry {
-  id           String   @id @default(cuid())
-  sessionId    String
-  productId    String?
-  barcodeValue String
-  locationId   String
-  quantity     Int      @default(1)
-  scannedAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String   @id @default(cuid())
+  sessionId       String
+  productId       String?
+  barcodeValue    String
+  locationId      String
+  quantity        Int      @default(1)
+  countedByUserId String?
+  scannedAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  session  StoreCountSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  product  Product?           @relation(fields: [productId], references: [id], onDelete: SetNull)
-  location StoreLocation      @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  scanLogs StoreCountScanLog[]
+  session   StoreCountSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  product   Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  location  StoreLocation     @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  countedBy User?             @relation("StoreCountEntryCounter", fields: [countedByUserId], references: [id], onDelete: SetNull)
+  scanLogs  StoreCountScanLog[]
 
   @@unique([sessionId, locationId, barcodeValue])
   @@index([sessionId, locationId])
   @@index([sessionId, barcodeValue])
   @@index([productId])
   @@index([locationId])
+  @@index([countedByUserId])
 }
 
 model StoreCountScanLog {
   idempotencyKey String   @id
   entryId        String
   sessionId      String
+  userId         String?
   quantityDelta  Int
   createdAt      DateTime @default(now())
 
   entry StoreCountEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  user  User?           @relation("StoreCountScanActor", fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([sessionId])
   @@index([entryId])
+  @@index([userId])
 }
 
 model InventoryTransaction {
