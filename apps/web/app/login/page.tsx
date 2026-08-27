@@ -4,12 +4,10 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { API_URL } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
-import { useLocale } from "../../lib/i18n/locale-context";
 
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
-  const { t } = useLocale();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -38,14 +36,14 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
       if (!res.ok) {
-        setError(t("loginError"));
+        setError("Incorrect email or password.");
         return;
       }
       const data = await res.json();
       await login(data.token);
       router.push("/");
     } catch {
-      setError(t("connectionError"));
+      setError("Unable to connect to Store Scan. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -55,7 +53,7 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
     if (password !== confirmPassword) {
-      setError(t("passwordMismatch"));
+      setError("Passwords do not match.");
       return;
     }
     setLoading(true);
@@ -68,10 +66,10 @@ export default function LoginPage() {
       if (!res.ok) {
         if (res.status === 409) {
           setNeedsBootstrap(false);
-          setError(t("adminExistsError"));
+          setError("An administrator account already exists. Please sign in.");
           return;
         }
-        setError(t("accountCreateError"));
+        setError("Unable to create the administrator account.");
         return;
       }
 
@@ -81,14 +79,14 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
       if (!loginRes.ok) {
-        setError(t("loginError"));
+        setError("Account created, but sign-in failed. Please sign in again.");
         return;
       }
       const data = await loginRes.json();
       await login(data.token);
       router.push("/");
     } catch {
-      setError(t("connectionError"));
+      setError("Unable to connect to Store Scan. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -97,81 +95,37 @@ export default function LoginPage() {
   if (checkingBootstrap) {
     return (
       <main className="container">
-        <p>{t("loading")}</p>
+        <h1>Store Scan</h1>
+        <p>Connecting...</p>
       </main>
     );
   }
 
   return (
     <main className="container">
-      <h1>Stash</h1>
+      <h1>Store Scan</h1>
+      <p>Fast, accurate store inventory counting.</p>
       {needsBootstrap ? (
         <>
-          <p>{t("bootstrapIntro")}</p>
+          <h2>Create Administrator</h2>
+          <p>Create the first administrator account for this Store Scan installation.</p>
           <form onSubmit={handleBootstrapSubmit} className="form">
-            <input
-              type="text"
-              autoComplete="name"
-              placeholder={t("namePlaceholder")}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-            <input
-              type="email"
-              inputMode="email"
-              autoComplete="email"
-              placeholder={t("emailPlaceholder")}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-            <input
-              type="password"
-              autoComplete="new-password"
-              placeholder={t("passwordMinPlaceholder")}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-            <input
-              type="password"
-              autoComplete="new-password"
-              placeholder={t("confirmPasswordPlaceholder")}
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-            />
-            <button type="submit" disabled={loading}>
-              {loading ? t("creatingAccount") : t("createFirstAdmin")}
-            </button>
+            <input type="text" autoComplete="name" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} required />
+            <input type="email" inputMode="email" autoComplete="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <input type="password" autoComplete="new-password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <input type="password" autoComplete="new-password" placeholder="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+            <button type="submit" disabled={loading}>{loading ? "Creating account..." : "Create Administrator"}</button>
             {error && <p className="error-text">{error}</p>}
           </form>
         </>
       ) : (
         <>
-          <p>{t("loginIntro")}</p>
+          <h2>Sign In</h2>
+          <p>Sign in to start or continue a store count.</p>
           <form onSubmit={handleSubmit} className="form">
-            <input
-              type="email"
-              inputMode="email"
-              autoComplete="email"
-              placeholder={t("emailPlaceholder")}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-            <input
-              type="password"
-              autoComplete="current-password"
-              placeholder={t("passwordPlaceholder")}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-            <button type="submit" disabled={loading}>
-              {loading ? t("loggingIn") : t("loginButton")}
-            </button>
+            <input type="email" inputMode="email" autoComplete="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <input type="password" autoComplete="current-password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <button type="submit" disabled={loading}>{loading ? "Signing in..." : "Sign In"}</button>
             {error && <p className="error-text">{error}</p>}
           </form>
         </>
