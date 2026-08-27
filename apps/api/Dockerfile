@@ -30,4 +30,6 @@ COPY --from=build /app/apps/api/assets ./apps/api/assets
 COPY --from=build /app/apps/api/package.json ./apps/api/package.json
 RUN mkdir -p /app/uploads
 EXPOSE 8080
-CMD ["node", "apps/api/dist/index.js"]
+# Keep production schema current before accepting traffic. If a migration fails, the
+# service stays down instead of serving against an incompatible database schema.
+CMD ["sh", "-c", "cd /app/apps/api && npm run prisma:migrate:deploy && node dist/index.js"]
