@@ -11,6 +11,15 @@ export async function storeLocationRoutes(app: FastifyInstance) {
     const site = await ensurePilotSiteForUser(request.user.sub, request.user.role);
     if (!site) return reply.code(403).send({ error: "No authorized store site is configured for this user." });
 
+    if (request.user.role === "ADMIN") {
+      const anyLocation = await prisma.storeLocation.findFirst({ where: { siteId: site.id }, select: { id: true } });
+      if (!anyLocation) {
+        await prisma.storeLocation.create({
+          data: { siteId: site.id, code: "TEST", name: "Pilot Test Area", isActive: true, sortOrder: 0 },
+        });
+      }
+    }
+
     const query = request.query as { includeInactive?: string };
     const includeInactive = query.includeInactive === "true";
     return prisma.storeLocation.findMany({
