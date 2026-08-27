@@ -3,7 +3,7 @@ import { prisma } from "./prisma.js";
 
 export type PilotSite = { id: string; organizationId: string };
 
-export async function ensurePilotSiteForUser(userId: string, role: string): Promise<PilotSite | null> {
+export async function ensurePilotSiteForUser(userId: string, role?: string): Promise<PilotSite | null> {
   const existing = await prisma.site.findFirst({
     where: {
       isActive: true,
