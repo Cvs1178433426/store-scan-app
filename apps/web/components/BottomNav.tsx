@@ -1,288 +1,53 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactElement, type SVGProps } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useAuth } from "../lib/auth-context";
-import { useLocale } from "../lib/i18n/locale-context";
-import type { TranslationKey } from "../lib/i18n/translations";
 
-function iconProps(): SVGProps<SVGSVGElement> {
-  return {
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.8,
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-  };
-}
+type NavItem = {
+  href: string;
+  label: string;
+  symbol: string;
+  primary?: boolean;
+  adminOnly?: boolean;
+};
 
-function HomeIcon() {
-  return (
-    <svg {...iconProps()}>
-      <path d="M4 11.5 12 4l8 7.5" />
-      <path d="M6 10v9.5a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V10" />
-      <path d="M10 20.5V15h4v5.5" />
-    </svg>
-  );
-}
-
-function BoxIcon() {
-  return (
-    <svg {...iconProps()}>
-      <path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5v-9Z" />
-      <path d="M3.5 7.5 12 12l8.5-4.5" />
-      <path d="M12 12v9" />
-    </svg>
-  );
-}
-
-function CameraIcon() {
-  return (
-    <svg {...iconProps()}>
-      <path d="M4 8h3l1.5-2h6L16 8h4a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" />
-      <circle cx="12" cy="13" r="3.5" />
-    </svg>
-  );
-}
-
-function CartIcon() {
-  return (
-    <svg {...iconProps()}>
-      <path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.6a2 2 0 0 0 2-1.6L21 8H6" />
-      <circle cx="9.5" cy="20" r="1.3" />
-      <circle cx="17" cy="20" r="1.3" />
-    </svg>
-  );
-}
-
-function MoreIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <circle cx="5" cy="12" r="1.8" />
-      <circle cx="12" cy="12" r="1.8" />
-      <circle cx="19" cy="12" r="1.8" />
-    </svg>
-  );
-}
-
-function LocationIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg {...iconProps()} width={size} height={size}>
-      <rect x="4" y="3" width="16" height="18" rx="1.5" />
-      <path d="M4 9h16M4 15h16" />
-    </svg>
-  );
-}
-
-function CategoryIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg {...iconProps()} width={size} height={size}>
-      <path d="M3 3h7.5L21 13.5 13.5 21 3 10.5V3Z" />
-      <circle cx="8" cy="8" r="1.3" />
-    </svg>
-  );
-}
-
-function HistoryIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg {...iconProps()} width={size} height={size}>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7v5l3.5 2" />
-    </svg>
-  );
-}
-
-function LabelIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg {...iconProps()} width={size} height={size}>
-      <path d="M6 9V4h12v5" />
-      <rect x="4" y="9" width="16" height="7" rx="1.5" />
-      <path d="M8 13h8v7H8v-7Z" />
-    </svg>
-  );
-}
-
-function TrashIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg {...iconProps()} width={size} height={size}>
-      <path d="M4 7h16" />
-      <path d="M9 7V4h6v3" />
-      <path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" />
-      <path d="M10 11v6M14 11v6" />
-    </svg>
-  );
-}
-
-function SettingsIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg {...iconProps()} width={size} height={size}>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z" />
-    </svg>
-  );
-}
-
-function UsersIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg {...iconProps()} width={size} height={size}>
-      <circle cx="9" cy="8" r="3" />
-      <path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5" />
-      <circle cx="17" cy="9" r="2.3" />
-      <path d="M15 13.2c2 .3 3.7 1.9 3.7 4.3" />
-    </svg>
-  );
-}
-
-function IntegrationIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg {...iconProps()} width={size} height={size}>
-      <path d="M9 3v4M15 3v4" />
-      <path d="M6 7h12v3a6 6 0 0 1-12 0V7Z" />
-      <path d="M12 16v5" />
-    </svg>
-  );
-}
-
-function AuditIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg {...iconProps()} width={size} height={size}>
-      <path d="M9 11l3 3L22 4" />
-      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-    </svg>
-  );
-}
-
-function InsightsIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg {...iconProps()} width={size} height={size}>
-      <path d="M4 19V5" />
-      <path d="M4 19h16" />
-      <path d="M8 15v-4" />
-      <path d="M12 15V8" />
-      <path d="M16 15v-6" />
-    </svg>
-  );
-}
-
-const TABS: { href: string; labelKey: TranslationKey; Icon: () => ReactElement; primary?: boolean }[] = [
-  { href: "/", labelKey: "navHome", Icon: HomeIcon },
-  { href: "/items", labelKey: "navItems", Icon: BoxIcon },
-  { href: "/store-count", labelKey: "navScan", Icon: CameraIcon, primary: true },
-  { href: "/shopping", labelKey: "navShopping", Icon: CartIcon },
+const NAV_ITEMS: NavItem[] = [
+  { href: "/store-count", label: "Count", symbol: "▦", primary: true },
+  { href: "/store-scan", label: "Add", symbol: "⌁" },
+  { href: "/store-products", label: "Products", symbol: "□" },
+  { href: "/store-locations", label: "Locations", symbol: "⌖" },
+  { href: "/settings", label: "Settings", symbol: "⚙", adminOnly: true },
 ];
 
 export function BottomNav() {
   const pathname = usePathname();
-  const router = useRouter();
-  const { t } = useLocale();
   const { isAdmin } = useAuth();
-  const [moreOpen, setMoreOpen] = useState(false);
-  const sheetRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!moreOpen) return;
-    function handleOutsideClick(e: MouseEvent) {
-      if (sheetRef.current && !sheetRef.current.contains(e.target as Node)) {
-        setMoreOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, [moreOpen]);
-
-  useEffect(() => {
-    setMoreOpen(false);
-  }, [pathname]);
 
   if (pathname === "/login" || pathname.startsWith("/i/")) return null;
 
-  function go(href: string) {
-    setMoreOpen(false);
-    router.push(href);
-  }
+  const visibleItems = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
 
   return (
-    <>
-      <nav className="bottom-nav">
-        <div className="bottom-nav-inner">
-          {TABS.map((tab) => {
-            const active = pathname === tab.href;
-            const label = t(tab.labelKey);
-            if (tab.primary) {
-              return (
-                <Link key={tab.href} href={tab.href} className={`scan-tab ${active ? "active" : ""}`}>
-                  <span className="icon-wrap">
-                    <span className="icon">
-                      <tab.Icon />
-                    </span>
-                  </span>
-                  {label}
-                </Link>
-              );
-            }
-            return (
-              <Link key={tab.href} href={tab.href} className={active ? "active" : ""}>
-                <span className="icon">
-                  <tab.Icon />
-                </span>
-                {label}
-              </Link>
-            );
-          })}
-          <button type="button" className={`bottom-nav-more ${moreOpen ? "active" : ""}`} onClick={() => setMoreOpen((v) => !v)}>
-            <span className="icon"><MoreIcon /></span>
-            {t("navMore")}
-          </button>
-        </div>
-      </nav>
-
-      {moreOpen && (
-        <div className="sheet-backdrop" onClick={() => setMoreOpen(false)}>
-          <div className="sheet-card" ref={sheetRef} onClick={(e) => e.stopPropagation()}>
-            <div className="sheet-handle" />
-
-            <div className="sheet-group-label">Store Scan</div>
-            <div className="sheet-grid">
-              <button type="button" className="sheet-item" onClick={() => go("/store-count")}><CameraIcon /> Count products</button>
-              <button type="button" className="sheet-item" onClick={() => go("/store-scan")}><CameraIcon /> Add by barcode</button>
-              <button type="button" className="sheet-item" onClick={() => go("/store-products")}><BoxIcon /> Products</button>
-              <button type="button" className="sheet-item" onClick={() => go("/store-locations")}><LocationIcon size={20} /> Store locations</button>
-            </div>
-
-            <div className="sheet-group-label">{t("menuGroupStructure")}</div>
-            <div className="sheet-grid">
-              <button type="button" className="sheet-item" onClick={() => go("/locations")}>
-                <LocationIcon size={20} /> {t("manageLocations")}
-              </button>
-              <button type="button" className="sheet-item" onClick={() => go("/categories")}>
-                <CategoryIcon size={20} /> {t("manageCategories")}
-              </button>
-            </div>
-
-            <div className="sheet-group-label">{t("menuGroupActions")}</div>
-            <div className="sheet-grid">
-              <button type="button" className="sheet-item" onClick={() => go("/audit")}><AuditIcon size={20} /> {t("auditNavLabel")}</button>
-              <button type="button" className="sheet-item" onClick={() => go("/history")}><HistoryIcon size={20} /> {t("historyTitle")}</button>
-              <button type="button" className="sheet-item" onClick={() => go("/insights")}><InsightsIcon size={20} /> {t("insightsNavLabel")}</button>
-              <button type="button" className="sheet-item" onClick={() => go("/labels")}><LabelIcon size={20} /> {t("printLabels")}</button>
-              <button type="button" className="sheet-item" onClick={() => go("/trash")}><TrashIcon size={20} /> {t("trashTitle")}</button>
-            </div>
-
-            <div className="sheet-group-label">{t("menuGroupAccount")}</div>
-            <div className="sheet-grid">
-              <button type="button" className="sheet-item" onClick={() => go("/settings")}><SettingsIcon size={20} /> {t("settingsLabel")}</button>
-              {isAdmin && <button type="button" className="sheet-item" onClick={() => go("/users")}><UsersIcon size={20} /> {t("familyAccounts")}</button>}
-              {isAdmin && <button type="button" className="sheet-item" onClick={() => go("/settings/integrations")}><IntegrationIcon size={20} /> {t("integrationSettings")}</button>}
-            </div>
-
-            <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--color-border)" }}>
-              v{process.env.APP_VERSION}
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    <nav className="bottom-nav" aria-label="Store Scan navigation">
+      <div className="bottom-nav-inner">
+        {visibleItems.map((item) => {
+          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`${item.primary ? "scan-tab" : ""} ${active ? "active" : ""}`.trim()}
+              aria-current={active ? "page" : undefined}
+            >
+              <span className={item.primary ? "icon-wrap" : undefined}>
+                <span className="icon" aria-hidden>{item.symbol}</span>
+              </span>
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
   );
 }
