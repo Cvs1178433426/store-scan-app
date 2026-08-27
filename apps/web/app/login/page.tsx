@@ -41,7 +41,7 @@ export default function LoginPage() {
       }
       const data = await res.json();
       await login(data.token);
-      router.push("/");
+      router.push("/store-count");
     } catch {
       setError("Unable to connect to Store Scan. Please try again.");
     } finally {
@@ -84,7 +84,7 @@ export default function LoginPage() {
       }
       const data = await loginRes.json();
       await login(data.token);
-      router.push("/");
+      router.push("/store-count");
     } catch {
       setError("Unable to connect to Store Scan. Please try again.");
     } finally {
