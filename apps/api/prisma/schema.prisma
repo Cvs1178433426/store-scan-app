@@ -115,16 +115,19 @@ enum StoreCountSessionStatus {
 }
 
 model User {
-  id              String   @id @default(cuid())
-  name            String
-  email           String   @unique
-  employeeNumber  String?  @unique
-  passwordHash    String
-  recoveryPinHash String?
-  role            UserRole @default(GENERAL)
-  isActive        Boolean  @default(true)
-  tokenVersion    Int      @default(0)
-  createdAt       DateTime @default(now())
+  id                    String   @id @default(cuid())
+  name                  String
+  email                 String   @unique
+  employeeNumber        String?  @unique
+  passwordHash          String
+  recoveryPinHash       String?
+  mfaSecretEncrypted    String?
+  mfaEnabled            Boolean  @default(false)
+  mfaBackupCodeHashes   Json?
+  role                  UserRole @default(GENERAL)
+  isActive              Boolean  @default(true)
+  tokenVersion          Int      @default(0)
+  createdAt             DateTime @default(now())
 
   createdItems             Item[]                     @relation("ItemCreatedBy")
   movements                StockMovement[]
