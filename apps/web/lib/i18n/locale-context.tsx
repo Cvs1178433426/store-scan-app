@@ -26,6 +26,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     const initial = stored === "en" || stored === "ko" ? stored : "en";
+    if (!stored) localStorage.setItem(STORAGE_KEY, initial);
     setLocaleState(initial);
     document.documentElement.lang = initial;
   }, []);
