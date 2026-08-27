@@ -27,7 +27,7 @@ import { productRoutes } from "./routes/products.js";
 import { startExpiryNotificationJob } from "./jobs/expiryNotifications.js";
 import { startTrashPurgeJob } from "./jobs/trashPurge.js";
 import { startLowStockSummaryJob } from "./jobs/lowStockSummary.js";
-import { localeFromRequest } from "./lib/i18n.js";
+import { requestLocaleFromHeaders } from "./lib/requestLocale.js";
 import { getCachedTokenVersion } from "./lib/tokenVersion.js";
 import { isMediaAuthDisabled } from "./lib/mediaAuth.js";
 import { prisma } from "./lib/prisma.js";
@@ -90,7 +90,7 @@ await app.register(rateLimit, { global: false });
 
 app.decorateRequest("locale", "en");
 app.addHook("onRequest", async (request) => {
-  request.locale = localeFromRequest(request);
+  request.locale = requestLocaleFromHeaders(request.headers);
 });
 
 app.decorate("authenticate", async (request, reply) => {
