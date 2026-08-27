@@ -16,7 +16,32 @@ export async function ensurePilotSiteForUser(userId: string, role: string): Prom
     select: { id: true, organizationId: true },
   });
   if (existing) return existing;
-  if (role !== "ADMIN") return null;
+
+  if (role !== "ADMIN") {
+    const organizations = await prisma.organization.findMany({
+      where: { isActive: true },
+      take: 2,
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        sites: {
+          where: { isActive: true },
+          take: 1,
+          orderBy: [{ code: "asc" }, { id: "asc" }],
+          select: { id: true, organizationId: true },
+        },
+      },
+    });
+    if (organizations.length !== 1 || organizations[0].sites.length !== 1) return null;
+
+    const organization = organizations[0];
+    await prisma.organizationMembership.upsert({
+      where: { organizationId_userId: { organizationId: organization.id, userId } },
+      update: { isActive: true, role: "INVENTORY" },
+      create: { organizationId: organization.id, userId, role: "INVENTORY" },
+    });
+    return organization.sites[0];
+  }
 
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pilot-site:${userId}`}))`;
