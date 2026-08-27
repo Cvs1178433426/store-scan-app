@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { API_URL } from "../../lib/api";
@@ -8,7 +9,7 @@ import { useAuth } from "../../lib/auth-context";
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -33,10 +34,10 @@ export default function LoginPage() {
       const res = await fetch(`${API_URL}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ identifier, password }),
       });
       if (!res.ok) {
-        setError("Incorrect email or password.");
+        setError("Incorrect email, employee number, or password.");
         return;
       }
       const data = await res.json();
@@ -61,7 +62,7 @@ export default function LoginPage() {
       const res = await fetch(`${API_URL}/api/auth/bootstrap/admin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email: identifier, password }),
       });
       if (!res.ok) {
         if (res.status === 409) {
@@ -76,7 +77,7 @@ export default function LoginPage() {
       const loginRes = await fetch(`${API_URL}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ identifier, password }),
       });
       if (!loginRes.ok) {
         setError("Account created, but sign-in failed. Please sign in again.");
@@ -93,12 +94,7 @@ export default function LoginPage() {
   }
 
   if (checkingBootstrap) {
-    return (
-      <main className="container">
-        <h1>Store Scan</h1>
-        <p>Connecting...</p>
-      </main>
-    );
+    return <main className="container"><h1>Store Scan</h1><p>Connecting...</p></main>;
   }
 
   return (
@@ -111,7 +107,7 @@ export default function LoginPage() {
           <p>Create the first administrator account for this Store Scan installation.</p>
           <form onSubmit={handleBootstrapSubmit} className="form">
             <input type="text" autoComplete="name" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} required />
-            <input type="email" inputMode="email" autoComplete="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <input type="email" inputMode="email" autoComplete="email" placeholder="Email" value={identifier} onChange={(e) => setIdentifier(e.target.value)} required />
             <input type="password" autoComplete="new-password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
             <input type="password" autoComplete="new-password" placeholder="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
             <button type="submit" disabled={loading}>{loading ? "Creating account..." : "Create Administrator"}</button>
@@ -120,14 +116,20 @@ export default function LoginPage() {
         </>
       ) : (
         <>
-          <h2>Sign In</h2>
-          <p>Sign in to start or continue a store count.</p>
+          <h2>Sign In Now</h2>
+          <p>Use your email address or Employee Number.</p>
           <form onSubmit={handleSubmit} className="form">
-            <input type="email" inputMode="email" autoComplete="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <input type="text" autoCapitalize="none" autoComplete="username" placeholder="Email or Employee Number" value={identifier} onChange={(e) => setIdentifier(e.target.value)} required />
             <input type="password" autoComplete="current-password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
             <button type="submit" disabled={loading}>{loading ? "Signing in..." : "Sign In"}</button>
             {error && <p className="error-text">{error}</p>}
           </form>
+          <div style={{ marginTop: 22, display: "grid", gap: 10 }}>
+            <Link href="/register"><strong>Create a New Account</strong></Link>
+            <Link href="/forgot-user-id">Forgot User ID / Employee Number?</Link>
+            <Link href="/forgot-password">Forgot Password?</Link>
+            <Link href="/help">Need Help?</Link>
+          </div>
         </>
       )}
     </main>
