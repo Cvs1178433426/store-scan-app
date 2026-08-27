@@ -2,15 +2,22 @@ import type { FastifyInstance } from "fastify";
 import { storeLocationInputSchema, storeLocationUpdateSchema } from "@stash/shared";
 import { prisma } from "../lib/prisma.js";
 import { isUniqueConstraintError } from "../lib/prismaErrors.js";
+import { ensurePilotSiteForUser } from "../lib/pilotSite.js";
 
 export async function storeLocationRoutes(app: FastifyInstance) {
   app.addHook("preHandler", app.authenticate);
 
-  app.get("/", async (request) => {
+  app.get("/", async (request, reply) => {
+    const site = await ensurePilotSiteForUser(request.user.sub, request.user.role);
+    if (!site) return reply.code(403).send({ error: "No authorized store site is configured for this user." });
+
     const query = request.query as { includeInactive?: string };
     const includeInactive = query.includeInactive === "true";
     return prisma.storeLocation.findMany({
-      where: includeInactive ? undefined : { isActive: true },
+      where: {
+        siteId: site.id,
+        ...(includeInactive ? {} : { isActive: true }),
+      },
       orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
       include: { _count: { select: { entries: true } } },
     });
@@ -20,8 +27,11 @@ export async function storeLocationRoutes(app: FastifyInstance) {
     const parsed = storeLocationInputSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
 
+    const site = await ensurePilotSiteForUser(request.user.sub, request.user.role);
+    if (!site) return reply.code(403).send({ error: "No authorized store site is configured for this user." });
+
     try {
-      const location = await prisma.storeLocation.create({ data: parsed.data });
+      const location = await prisma.storeLocation.create({ data: { ...parsed.data, siteId: site.id } });
       return reply.code(201).send(location);
     } catch (err) {
       if (isUniqueConstraintError(err)) {
@@ -35,6 +45,12 @@ export async function storeLocationRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const parsed = storeLocationUpdateSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+
+    const site = await ensurePilotSiteForUser(request.user.sub, request.user.role);
+    if (!site) return reply.code(403).send({ error: "No authorized store site is configured for this user." });
+
+    const existing = await prisma.storeLocation.findFirst({ where: { id, siteId: site.id } });
+    if (!existing) return reply.code(404).send({ error: "Store location not found." });
 
     try {
       return await prisma.storeLocation.update({ where: { id }, data: parsed.data });
