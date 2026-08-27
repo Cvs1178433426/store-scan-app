@@ -85,7 +85,7 @@ export async function mfaRoutes(app: FastifyInstance) {
     if (!user || !user.mfaEnabled || !user.mfaSecretEncrypted) return reply.code(401).send({ error: "MFA verification session expired. Sign in again." });
 
     let totpValid = false;
-    try { totpValid = verifyTotp(decryptSecret(user.mfaSecretEncrypted), code); } catch { totpValid = false; }
+    try { totpValid = verifyTotp(decryptSecret(user.mfaSecretEncrypted), code); } catch { /* invalid encrypted secret */ }
     if (totpValid) return sessionResponse(app, reply, user);
 
     const hashes = Array.isArray(user.mfaBackupCodeHashes) ? user.mfaBackupCodeHashes.filter((v): v is string => typeof v === "string") : [];
