@@ -13,7 +13,7 @@ import {
 import { prisma } from "../lib/prisma.js";
 import { t } from "../lib/i18n.js";
 import { bumpTokenVersion, invalidateTokenVersionCache } from "../lib/tokenVersion.js";
-import { clearMediaCookie, setMediaCookie } from "../lib/mediaAuth.js";
+import { clearMediaCookie } from "../lib/mediaAuth.js";
 
 const JWT_EXPIRES_IN = "7d";
 
@@ -39,142 +39,78 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/bootstrap/admin", async (request, reply) => {
     const parsed = bootstrapAdminSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-
     const userCount = await prisma.user.count();
     if (userCount > 0) return reply.code(409).send({ error: t("bootstrapDisabled", request.locale) });
 
     const { name, email, password } = parsed.data;
     const passwordHash = await bcrypt.hash(password, 10);
     const employeeNumber = await createEmployeeNumber();
-    const user = await prisma.user.create({
-      data: { name, email, employeeNumber, passwordHash, role: "ADMIN" },
-    });
-    return reply.code(201).send({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      employeeNumber: user.employeeNumber,
-      role: user.role,
-    });
+    const user = await prisma.user.create({ data: { name, email, employeeNumber, passwordHash, role: "ADMIN" } });
+    return reply.code(201).send({ id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role });
   });
 
-  app.post(
-    "/register",
-    { config: { rateLimit: { max: 5, timeWindow: "1 hour" } } },
-    async (request, reply) => {
-      const parsed = registerSchema.safeParse(request.body);
-      if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+  app.post("/register", { config: { rateLimit: { max: 5, timeWindow: "1 hour" } } }, async (request, reply) => {
+    const parsed = registerSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const { name, email, password, recoveryPin } = parsed.data;
+    const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+    if (existing) return reply.code(409).send({ error: "An account with that email already exists." });
 
-      const { name, email, password, recoveryPin } = parsed.data;
-      const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
-      if (existing) return reply.code(409).send({ error: "An account with that email already exists." });
+    const [passwordHash, recoveryPinHash, employeeNumber] = await Promise.all([
+      bcrypt.hash(password, 10), bcrypt.hash(recoveryPin, 10), createEmployeeNumber(),
+    ]);
+    const user = await prisma.user.create({ data: { name, email, employeeNumber, passwordHash, recoveryPinHash, role: "GENERAL" } });
+    return reply.code(201).send({ id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role });
+  });
 
-      const [passwordHash, recoveryPinHash, employeeNumber] = await Promise.all([
-        bcrypt.hash(password, 10),
-        bcrypt.hash(recoveryPin, 10),
-        createEmployeeNumber(),
-      ]);
-      const user = await prisma.user.create({
-        data: { name, email, employeeNumber, passwordHash, recoveryPinHash, role: "GENERAL" },
-      });
+  app.post("/login", { config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } }, async (request, reply) => {
+    const parsed = loginSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
 
-      return reply.code(201).send({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        employeeNumber: user.employeeNumber,
-        role: user.role,
-      });
-    },
-  );
+    const identifier = (parsed.data.identifier ?? parsed.data.email ?? "").trim();
+    const user = await prisma.user.findFirst({
+      where: { OR: [{ email: identifier.toLowerCase() }, { employeeNumber: identifier.toUpperCase() }] },
+    });
+    if (!user || !user.isActive) return reply.code(401).send({ error: t("invalidCredentials", request.locale) });
+    const valid = await bcrypt.compare(parsed.data.password, user.passwordHash);
+    if (!valid) return reply.code(401).send({ error: t("invalidCredentials", request.locale) });
 
-  app.post(
-    "/login",
-    { config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } },
-    async (request, reply) => {
-      const parsed = loginSchema.safeParse(request.body);
-      if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const purpose = user.mfaEnabled ? "mfa-login" : "mfa-setup";
+    const challengeToken = app.jwt.sign(
+      { sub: user.id, role: user.role, tv: user.tokenVersion, purpose },
+      { expiresIn: "10m" },
+    );
+    return {
+      mfaRequired: true,
+      enrollmentRequired: !user.mfaEnabled,
+      challengeToken,
+      user: { id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role },
+    };
+  });
 
-      const { password } = parsed.data;
-      const identifier = (parsed.data.identifier ?? parsed.data.email ?? "").trim();
-      const user = await prisma.user.findFirst({
-        where: {
-          OR: [
-            { email: identifier.toLowerCase() },
-            { employeeNumber: identifier.toUpperCase() },
-          ],
-        },
-      });
-      if (!user || !user.isActive) return reply.code(401).send({ error: t("invalidCredentials", request.locale) });
+  app.post("/recover/user-id", { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } }, async (request, reply) => {
+    const parsed = recoverUserIdSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+    if (!user || !user.isActive || !user.recoveryPinHash) return reply.code(401).send({ error: "We could not verify that account." });
+    const valid = await bcrypt.compare(parsed.data.recoveryPin, user.recoveryPinHash);
+    if (!valid) return reply.code(401).send({ error: "We could not verify that account." });
+    return { employeeNumber: user.employeeNumber, email: user.email };
+  });
 
-      const valid = await bcrypt.compare(password, user.passwordHash);
-      if (!valid) return reply.code(401).send({ error: t("invalidCredentials", request.locale) });
-
-      const token = app.jwt.sign(
-        { sub: user.id, role: user.role, tv: user.tokenVersion },
-        { expiresIn: JWT_EXPIRES_IN },
-      );
-      setMediaCookie(app, reply, user.id);
-
-      return {
-        token,
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          employeeNumber: user.employeeNumber,
-          role: user.role,
-        },
-      };
-    },
-  );
-
-  app.post(
-    "/recover/user-id",
-    { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } },
-    async (request, reply) => {
-      const parsed = recoverUserIdSchema.safeParse(request.body);
-      if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-
-      const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
-      if (!user || !user.isActive || !user.recoveryPinHash) {
-        return reply.code(401).send({ error: "We could not verify that account." });
-      }
-      const valid = await bcrypt.compare(parsed.data.recoveryPin, user.recoveryPinHash);
-      if (!valid) return reply.code(401).send({ error: "We could not verify that account." });
-
-      return { employeeNumber: user.employeeNumber, email: user.email };
-    },
-  );
-
-  app.post(
-    "/recover/password",
-    { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } },
-    async (request, reply) => {
-      const parsed = recoverPasswordSchema.safeParse(request.body);
-      if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-
-      const identifier = parsed.data.identifier.trim();
-      const user = await prisma.user.findFirst({
-        where: {
-          OR: [
-            { email: identifier.toLowerCase() },
-            { employeeNumber: identifier.toUpperCase() },
-          ],
-        },
-      });
-      if (!user || !user.isActive || !user.recoveryPinHash) {
-        return reply.code(401).send({ error: "We could not verify that account." });
-      }
-      const valid = await bcrypt.compare(parsed.data.recoveryPin, user.recoveryPinHash);
-      if (!valid) return reply.code(401).send({ error: "We could not verify that account." });
-
-      const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
-      await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
-      await bumpTokenVersion(user.id);
-      return { ok: true };
-    },
-  );
+  app.post("/recover/password", { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } }, async (request, reply) => {
+    const parsed = recoverPasswordSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const identifier = parsed.data.identifier.trim();
+    const user = await prisma.user.findFirst({ where: { OR: [{ email: identifier.toLowerCase() }, { employeeNumber: identifier.toUpperCase() }] } });
+    if (!user || !user.isActive || !user.recoveryPinHash) return reply.code(401).send({ error: "We could not verify that account." });
+    const valid = await bcrypt.compare(parsed.data.recoveryPin, user.recoveryPinHash);
+    if (!valid) return reply.code(401).send({ error: "We could not verify that account." });
+    const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+    await bumpTokenVersion(user.id);
+    return { ok: true };
+  });
 
   app.post("/logout", { preHandler: [app.authenticate] }, async (_request, reply) => {
     clearMediaCookie(reply);
@@ -190,36 +126,21 @@ export async function authRoutes(app: FastifyInstance) {
   app.get("/me", { preHandler: [app.authenticate] }, async (request, reply) => {
     const user = await prisma.user.findUnique({ where: { id: request.user.sub } });
     if (!user || !user.isActive) return reply.code(401).send({ error: "unauthorized" });
-    setMediaCookie(app, reply, user.id);
-    return {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      employeeNumber: user.employeeNumber,
-      role: user.role,
-    };
+    return { id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, mfaEnabled: user.mfaEnabled };
   });
 
   app.post("/users", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
     const parsed = createUserSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-
     const { name, email, password, role } = parsed.data;
     const [passwordHash, employeeNumber] = await Promise.all([bcrypt.hash(password, 10), createEmployeeNumber()]);
     const user = await prisma.user.create({ data: { name, email, employeeNumber, passwordHash, role } });
-    return reply.code(201).send({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      employeeNumber: user.employeeNumber,
-      role: user.role,
-      isActive: user.isActive,
-    });
+    return reply.code(201).send({ id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, isActive: user.isActive });
   });
 
   app.get("/users", { preHandler: [app.authenticate, app.requireAdmin] }, async () => {
     return prisma.user.findMany({
-      select: { id: true, name: true, email: true, employeeNumber: true, role: true, isActive: true },
+      select: { id: true, name: true, email: true, employeeNumber: true, role: true, isActive: true, mfaEnabled: true },
       orderBy: { createdAt: "asc" },
     });
   });
@@ -227,10 +148,8 @@ export async function authRoutes(app: FastifyInstance) {
   app.delete("/users/:id", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     if (id === request.user.sub) return reply.code(400).send({ error: t("cannotDeleteSelf", request.locale) });
-
     const target = await prisma.user.findUnique({ where: { id }, select: { id: true } });
     if (!target) return reply.code(404).send({ error: t("userNotFound", request.locale) });
-
     await prisma.user.update({ where: { id }, data: { isActive: false } });
     await prisma.organizationMembership.updateMany({ where: { userId: id }, data: { isActive: false } });
     await bumpTokenVersion(id);
@@ -240,28 +159,32 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/users/:id/reset-password", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     if (id === request.user.sub) return reply.code(400).send({ error: t("cannotResetOwnPassword", request.locale) });
-
     const target = await prisma.user.findUnique({ where: { id } });
     if (!target) return reply.code(404).send({ error: t("userNotFound", request.locale) });
-
     const temporaryPassword = randomBytes(12).toString("base64url");
     const passwordHash = await bcrypt.hash(temporaryPassword, 10);
     await prisma.user.update({ where: { id }, data: { passwordHash } });
     await bumpTokenVersion(id);
-
     return { id: target.id, email: target.email, name: target.name, temporaryPassword };
+  });
+
+  app.post("/users/:id/reset-mfa", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const target = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+    if (!target) return reply.code(404).send({ error: t("userNotFound", request.locale) });
+    await prisma.user.update({ where: { id }, data: { mfaEnabled: false, mfaSecretEncrypted: null, mfaBackupCodeHashes: null } });
+    await bumpTokenVersion(id);
+    return { ok: true };
   });
 
   app.patch("/profile", { preHandler: [app.authenticate] }, async (request, reply) => {
     const parsed = updateProfileSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-
     const userId = request.user.sub;
     const { name, email, currentPassword, newPassword } = parsed.data;
     const updateData: Record<string, unknown> = {};
     if (name) updateData.name = name;
     if (email) updateData.email = email;
-
     if (newPassword) {
       if (!currentPassword) return reply.code(400).send({ error: t("currentPasswordRequired", request.locale) });
       const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -270,20 +193,8 @@ export async function authRoutes(app: FastifyInstance) {
       if (!valid) return reply.code(400).send({ error: t("incorrectCurrentPassword", request.locale) });
       updateData.passwordHash = await bcrypt.hash(newPassword, 10);
     }
-
     const user = await prisma.user.update({ where: { id: userId }, data: updateData });
-    if (newPassword) {
-      await bumpTokenVersion(userId);
-      clearMediaCookie(reply);
-    } else {
-      invalidateTokenVersionCache(userId);
-    }
-    return {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      employeeNumber: user.employeeNumber,
-      role: user.role,
-    };
+    if (newPassword) { await bumpTokenVersion(userId); clearMediaCookie(reply); } else invalidateTokenVersionCache(userId);
+    return { id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, mfaEnabled: user.mfaEnabled };
   });
 }
