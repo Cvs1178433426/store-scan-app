@@ -5,6 +5,7 @@ import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
 import { authRoutes } from "./routes/auth.js";
+import { mfaRoutes } from "./routes/mfa.js";
 import { locationRoutes } from "./routes/locations.js";
 import { categoryRoutes } from "./routes/categories.js";
 import { itemRoutes } from "./routes/items.js";
@@ -37,28 +38,21 @@ const INSECURE_JWT_SECRETS = new Set(["", "changeme", "dev-secret-change-me"]);
 function resolveJwtSecret(): string {
   const secret = process.env.JWT_SECRET ?? "";
   const isProd = process.env.NODE_ENV === "production";
-
   if (isProd && INSECURE_JWT_SECRETS.has(secret)) {
-    console.error(
-      "FATAL: JWT_SECRET must be set to a strong random value in production (not empty, changeme, or dev-secret-change-me). Generate one with: openssl rand -hex 32",
-    );
+    console.error("FATAL: JWT_SECRET must be set to a strong random value in production.");
     process.exit(1);
   }
-
   if (!secret) {
-    console.warn("JWT_SECRET이 설정되지 않았습니다. 개발용 폴백을 사용합니다. .env를 확인하세요.");
+    console.warn("JWT_SECRET is not set. Using development fallback.");
     return "dev-secret-change-me";
   }
-
   return secret;
 }
 
 const jwtSecret = resolveJwtSecret();
 
 if (isMediaAuthDisabled()) {
-  console.warn(
-    "WARNING: MEDIA_AUTH_DISABLED=true — attachment file routes are unauthenticated. Do not use this in production.",
-  );
+  console.warn("WARNING: MEDIA_AUTH_DISABLED=true — attachment file routes are unauthenticated. Do not use this in production.");
 }
 
 const app = Fastify({
@@ -66,16 +60,8 @@ const app = Fastify({
     serializers: {
       req(request) {
         const rawUrl = request.raw?.url ?? request.url;
-        const safeUrl =
-          typeof rawUrl === "string"
-            ? rawUrl.replace(/([?&](?:token|sig|ticket)=)[^&]*/gi, "$1[REDACTED]")
-            : rawUrl;
-        return {
-          method: request.method,
-          url: safeUrl,
-          hostname: request.hostname,
-          remoteAddress: request.ip,
-        };
+        const safeUrl = typeof rawUrl === "string" ? rawUrl.replace(/([?&](?:token|sig|ticket)=)[^&]*/gi, "$1[REDACTED]") : rawUrl;
+        return { method: request.method, url: safeUrl, hostname: request.hostname, remoteAddress: request.ip };
       },
     },
   },
@@ -89,54 +75,28 @@ await app.register(multipart, { limits: { fileSize: 20 * 1024 * 1024 } });
 await app.register(rateLimit, { global: false });
 
 app.decorateRequest("locale", "en");
-app.addHook("onRequest", async (request) => {
-  request.locale = requestLocaleFromHeaders(request.headers);
-});
+app.addHook("onRequest", async (request) => { request.locale = requestLocaleFromHeaders(request.headers); });
 
 app.decorate("authenticate", async (request, reply) => {
-  try {
-    await request.jwtVerify();
-  } catch {
-    reply.code(401).send({ error: "unauthorized" });
-    return;
-  }
-
-  if (request.user.purpose === "media" || request.user.purpose === "backup") {
-    reply.code(401).send({ error: "unauthorized" });
-    return;
-  }
-
+  try { await request.jwtVerify(); } catch { reply.code(401).send({ error: "unauthorized" }); return; }
+  // Any purpose-scoped JWT (MFA challenge, media, backup) is not a normal API session.
+  if (request.user.purpose) { reply.code(401).send({ error: "unauthorized" }); return; }
   const userId = request.user.sub;
-  if (typeof request.user.tv !== "number") {
-    reply.code(401).send({ error: "unauthorized" });
-    return;
-  }
-  const tokenTv = request.user.tv;
+  if (typeof request.user.tv !== "number") { reply.code(401).send({ error: "unauthorized" }); return; }
   const dbTv = await getCachedTokenVersion(userId);
-  if (dbTv === null || dbTv !== tokenTv) {
-    reply.code(401).send({ error: "unauthorized" });
-    return;
-  }
+  if (dbTv === null || dbTv !== request.user.tv) { reply.code(401).send({ error: "unauthorized" }); return; }
 });
 
 app.decorate("requireAdmin", async (request, reply) => {
-  const user = await prisma.user.findUnique({
-    where: { id: request.user.sub },
-    select: { role: true },
-  });
-  if (!user) {
-    reply.code(401).send({ error: "unauthorized" });
-    return;
-  }
-  if (user.role !== "ADMIN") {
-    reply.code(403).send({ error: "admin only" });
-    return;
-  }
+  const user = await prisma.user.findUnique({ where: { id: request.user.sub }, select: { role: true, isActive: true } });
+  if (!user || !user.isActive) { reply.code(401).send({ error: "unauthorized" }); return; }
+  if (user.role !== "ADMIN") { reply.code(403).send({ error: "admin only" }); return; }
 });
 
 app.get("/health", async () => ({ status: "ok" }));
 
 await app.register(authRoutes, { prefix: "/api/auth" });
+await app.register(mfaRoutes, { prefix: "/api/auth" });
 await app.register(locationRoutes, { prefix: "/api/locations" });
 await app.register(categoryRoutes, { prefix: "/api/categories" });
 await app.register(itemRoutes, { prefix: "/api/items" });
@@ -164,8 +124,4 @@ startTrashPurgeJob();
 startLowStockSummaryJob();
 
 const port = Number(process.env.PORT ?? 8080);
-
-app.listen({ port, host: "0.0.0.0" }).catch((err) => {
-  app.log.error(err);
-  process.exit(1);
-});
+app.listen({ port, host: "0.0.0.0" }).catch((err) => { app.log.error(err); process.exit(1); });
