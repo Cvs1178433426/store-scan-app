@@ -13,6 +13,7 @@ export default function LoginPage() {
   const { login } = useAuth();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -182,8 +183,9 @@ export default function LoginPage() {
           <form onSubmit={handleBootstrapSubmit} className="form">
             <input type="text" autoComplete="name" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} required />
             <input type="email" inputMode="email" autoComplete="email" placeholder="Email" value={identifier} onChange={(e) => setIdentifier(e.target.value)} required />
-            <input type="password" autoComplete="new-password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-            <input type="password" autoComplete="new-password" placeholder="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+            <input type={showPassword ? "text" : "password"} autoComplete="new-password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <input type={showPassword ? "text" : "password"} autoComplete="new-password" placeholder="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={showPassword} onChange={(e) => setShowPassword(e.target.checked)} />Show password</label>
             <button type="submit" disabled={loading}>{loading ? "Creating account..." : "Create Administrator"}</button>
             {error && <p className="error-text">{error}</p>}
           </form>
@@ -194,7 +196,8 @@ export default function LoginPage() {
           <p>Use your email address or Employee Number. A second verification step is required.</p>
           <form onSubmit={handleSubmit} className="form">
             <input type="text" autoCapitalize="none" autoComplete="username" placeholder="Email or Employee Number" value={identifier} onChange={(e) => setIdentifier(e.target.value)} required />
-            <input type="password" autoComplete="current-password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <input type={showPassword ? "text" : "password"} autoComplete="current-password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={showPassword} onChange={(e) => setShowPassword(e.target.checked)} />Show password</label>
             <button type="submit" disabled={loading}>{loading ? "Signing in..." : "Sign In"}</button>
             {error && <p className="error-text">{error}</p>}
           </form>
