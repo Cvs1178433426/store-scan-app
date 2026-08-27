@@ -13,7 +13,6 @@ interface LocaleContextValue {
 }
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
-
 const INTL_LOCALE: Record<Locale, string> = { ko: "ko-KR", en: "en-US" };
 
 function interpolate(template: string, params?: Record<string, string | number>): string {
@@ -22,11 +21,11 @@ function interpolate(template: string, params?: Record<string, string | number>)
 }
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>("ko");
+  const [locale, setLocaleState] = useState<Locale>("en");
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
-    const initial = stored === "en" || stored === "ko" ? stored : "ko";
+    const initial = stored === "en" || stored === "ko" ? stored : "en";
     setLocaleState(initial);
     document.documentElement.lang = initial;
   }, []);
