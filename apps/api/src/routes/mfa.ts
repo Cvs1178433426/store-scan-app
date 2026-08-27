@@ -14,8 +14,8 @@ import {
 } from "../lib/mfa.js";
 
 const JWT_EXPIRES_IN = "7d";
-
-type Challenge = { sub: string; role?: string; tv?: number; purpose?: string };
+type UserRole = "ADMIN" | "GENERAL";
+type Challenge = { sub: string; role?: UserRole; tv?: number; purpose?: string };
 
 function readChallenge(app: FastifyInstance, token: string): Challenge | null {
   try {
@@ -33,8 +33,14 @@ async function loadChallengeUser(app: FastifyInstance, token: string, purpose: "
   return user;
 }
 
-function issueSession(app: FastifyInstance, user: { id: string; role: string; tokenVersion: number }) {
+function issueSession(app: FastifyInstance, user: { id: string; role: UserRole; tokenVersion: number }) {
   return app.jwt.sign({ sub: user.id, role: user.role, tv: user.tokenVersion }, { expiresIn: JWT_EXPIRES_IN });
+}
+
+function sessionResponse(app: FastifyInstance, reply: Parameters<typeof setMediaCookie>[1], user: { id: string; name: string; email: string; employeeNumber: string | null; role: UserRole; tokenVersion: number }) {
+  const token = issueSession(app, user);
+  setMediaCookie(app, reply, user.id);
+  return { token, user: { id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, mfaEnabled: true } };
 }
 
 export async function mfaRoutes(app: FastifyInstance) {
@@ -68,17 +74,8 @@ export async function mfaRoutes(app: FastifyInstance) {
 
     const backupCodes = generateBackupCodes();
     const hashes = await hashBackupCodes(backupCodes);
-    const updated = await prisma.user.update({
-      where: { id: user.id },
-      data: { mfaEnabled: true, mfaBackupCodeHashes: hashes },
-    });
-    const token = issueSession(app, updated);
-    setMediaCookie(app, reply, updated.id);
-    return {
-      token,
-      backupCodes,
-      user: { id: updated.id, name: updated.name, email: updated.email, employeeNumber: updated.employeeNumber, role: updated.role, mfaEnabled: true },
-    };
+    const updated = await prisma.user.update({ where: { id: user.id }, data: { mfaEnabled: true, mfaBackupCodeHashes: hashes } });
+    return { ...sessionResponse(app, reply, updated), backupCodes };
   });
 
   app.post("/mfa/verify", { config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } }, async (request, reply) => {
@@ -87,21 +84,15 @@ export async function mfaRoutes(app: FastifyInstance) {
     const user = await loadChallengeUser(app, challengeToken, "mfa-login");
     if (!user || !user.mfaEnabled || !user.mfaSecretEncrypted) return reply.code(401).send({ error: "MFA verification session expired. Sign in again." });
 
-    let valid = false;
-    try { valid = verifyTotp(decryptSecret(user.mfaSecretEncrypted), code); } catch { valid = false; }
+    let totpValid = false;
+    try { totpValid = verifyTotp(decryptSecret(user.mfaSecretEncrypted), code); } catch { totpValid = false; }
+    if (totpValid) return sessionResponse(app, reply, user);
 
-    if (!valid) {
-      const hashes = Array.isArray(user.mfaBackupCodeHashes) ? user.mfaBackupCodeHashes.filter((v): v is string => typeof v === "string") : [];
-      const backup = await consumeBackupCode(code, hashes);
-      if (backup.valid) {
-        valid = true;
-        await prisma.user.update({ where: { id: user.id }, data: { mfaBackupCodeHashes: backup.remaining } });
-      }
-    }
-    if (!valid) return reply.code(401).send({ error: "That verification code is not correct." });
+    const hashes = Array.isArray(user.mfaBackupCodeHashes) ? user.mfaBackupCodeHashes.filter((v): v is string => typeof v === "string") : [];
+    const backup = await consumeBackupCode(code, hashes);
+    if (!backup.valid) return reply.code(401).send({ error: "That verification code is not correct." });
 
-    const token = issueSession(app, user);
-    setMediaCookie(app, reply, user.id);
-    return { token, user: { id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, mfaEnabled: true } };
+    await prisma.user.update({ where: { id: user.id }, data: { mfaBackupCodeHashes: backup.remaining } });
+    return sessionResponse(app, reply, user);
   });
 }
