@@ -148,12 +148,12 @@ await app.register(storeLocationRoutes, { prefix: "/api/store-locations" });
 await app.register(storeCountRoutes, { prefix: "/api/store-count" });
 await app.register(storeCountExportRoutes, { prefix: "/api/store-count" });
 await app.register(attachmentRoutes, { prefix: "/api/attachments" });
-await app.register(mediaAttachmentRoutes, { prefix: "/media/attachments" });
+await app.register(mediaAttachmentRoutes, { prefix: "/api/attachments" });
 await app.register(settingsRoutes, { prefix: "/api/settings" });
 await app.register(backupRoutes, { prefix: "/api/backup" });
 await app.register(labelRoutes, { prefix: "/api/labels" });
 await app.register(movementRoutes, { prefix: "/api/movements" });
-await app.register(maintenanceRoutes, { prefix: "/api/maintenance" });
+await app.register(maintenanceRoutes, { prefix: "/api" });
 await app.register(pushRoutes, { prefix: "/api/push" });
 await app.register(auditRoutes, { prefix: "/api/audit" });
 await app.register(xpRoutes, { prefix: "/api/xp" });
@@ -164,4 +164,8 @@ startTrashPurgeJob();
 startLowStockSummaryJob();
 
 const port = Number(process.env.PORT ?? 8080);
-await app.listen({ port, host: "0.0.0.0" });
+
+app.listen({ port, host: "0.0.0.0" }).catch((err) => {
+  app.log.error(err);
+  process.exit(1);
+});
