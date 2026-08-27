@@ -20,11 +20,19 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/settings", label: "Settings", symbol: "⚙", adminOnly: true },
 ];
 
+const PUBLIC_AUTH_ROUTES = new Set([
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/forgot-user-id",
+  "/help",
+]);
+
 export function BottomNav() {
   const pathname = usePathname();
   const { isAdmin } = useAuth();
 
-  if (pathname === "/login" || pathname.startsWith("/i/")) return null;
+  if (PUBLIC_AUTH_ROUTES.has(pathname) || pathname.startsWith("/i/")) return null;
 
   const visibleItems = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
 
