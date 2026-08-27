@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
+import { Prisma } from "@prisma/client";
 import {
   bootstrapAdminSchema,
   createUserSchema,
@@ -14,8 +15,6 @@ import { prisma } from "../lib/prisma.js";
 import { t } from "../lib/i18n.js";
 import { bumpTokenVersion, invalidateTokenVersionCache } from "../lib/tokenVersion.js";
 import { clearMediaCookie } from "../lib/mediaAuth.js";
-
-const JWT_EXPIRES_IN = "7d";
 
 function newEmployeeNumber(): string {
   return `EMP-${randomBytes(5).toString("hex").toUpperCase()}`;
@@ -68,18 +67,13 @@ export async function authRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
 
     const identifier = (parsed.data.identifier ?? parsed.data.email ?? "").trim();
-    const user = await prisma.user.findFirst({
-      where: { OR: [{ email: identifier.toLowerCase() }, { employeeNumber: identifier.toUpperCase() }] },
-    });
+    const user = await prisma.user.findFirst({ where: { OR: [{ email: identifier.toLowerCase() }, { employeeNumber: identifier.toUpperCase() }] } });
     if (!user || !user.isActive) return reply.code(401).send({ error: t("invalidCredentials", request.locale) });
     const valid = await bcrypt.compare(parsed.data.password, user.passwordHash);
     if (!valid) return reply.code(401).send({ error: t("invalidCredentials", request.locale) });
 
     const purpose = user.mfaEnabled ? "mfa-login" : "mfa-setup";
-    const challengeToken = app.jwt.sign(
-      { sub: user.id, role: user.role, tv: user.tokenVersion, purpose },
-      { expiresIn: "10m" },
-    );
+    const challengeToken = app.jwt.sign({ sub: user.id, role: user.role, tv: user.tokenVersion, purpose }, { expiresIn: "10m" });
     return {
       mfaRequired: true,
       enrollmentRequired: !user.mfaEnabled,
@@ -139,10 +133,7 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   app.get("/users", { preHandler: [app.authenticate, app.requireAdmin] }, async () => {
-    return prisma.user.findMany({
-      select: { id: true, name: true, email: true, employeeNumber: true, role: true, isActive: true, mfaEnabled: true },
-      orderBy: { createdAt: "asc" },
-    });
+    return prisma.user.findMany({ select: { id: true, name: true, email: true, employeeNumber: true, role: true, isActive: true, mfaEnabled: true }, orderBy: { createdAt: "asc" } });
   });
 
   app.delete("/users/:id", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
@@ -172,7 +163,7 @@ export async function authRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const target = await prisma.user.findUnique({ where: { id }, select: { id: true } });
     if (!target) return reply.code(404).send({ error: t("userNotFound", request.locale) });
-    await prisma.user.update({ where: { id }, data: { mfaEnabled: false, mfaSecretEncrypted: null, mfaBackupCodeHashes: null } });
+    await prisma.user.update({ where: { id }, data: { mfaEnabled: false, mfaSecretEncrypted: null, mfaBackupCodeHashes: Prisma.DbNull } });
     await bumpTokenVersion(id);
     return { ok: true };
   });
