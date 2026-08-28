@@ -6,8 +6,19 @@ const STEP_SECONDS = 30;
 const DIGITS = 6;
 
 function key(): Buffer {
-  const source = process.env.MFA_ENCRYPTION_KEY || process.env.JWT_SECRET || "dev-secret-change-me";
+  const source = process.env.MFA_ENCRYPTION_KEY || "dev-mfa-encryption-key-change-me";
   return createHash("sha256").update(source).digest();
+}
+
+export function assertMfaEncryptionConfig(): void {
+  if (process.env.NODE_ENV !== "production") return;
+  const source = process.env.MFA_ENCRYPTION_KEY?.trim() ?? "";
+  if (source.length < 32) {
+    throw new Error("MFA_ENCRYPTION_KEY must be an independent random value of at least 32 characters in production.");
+  }
+  if (source === process.env.JWT_SECRET) {
+    throw new Error("MFA_ENCRYPTION_KEY must not equal JWT_SECRET.");
+  }
 }
 
 export function generateTotpSecret(): string {

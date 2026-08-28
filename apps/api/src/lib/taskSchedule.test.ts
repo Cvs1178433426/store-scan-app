@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canManageTasks, dateOnly, dueAtForDate, isTemplateDue } from "./taskSchedule.js";
+import { canManageTasks, dateOnly, dueAtForDate, isTemplateDue, localDateInTimeZone } from "./taskSchedule.js";
 
 const d = (value: string) => new Date(`${value}T00:00:00.000Z`);
 
@@ -24,6 +24,18 @@ describe("task scheduling", () => {
     expect(isTemplateDue(template, d("2026-08-09"))).toBe(false);
     expect(isTemplateDue(template, d("2026-08-20"))).toBe(true);
     expect(isTemplateDue(template, d("2026-08-21"))).toBe(false);
+  });
+
+  it("runs end-of-month schedules on the last available calendar day", () => {
+    const template = { recurrence: "MONTHLY" as const, startDate: d("2026-01-01"), endDate: null, weeklyDay: null, monthlyDay: 31 };
+    expect(isTemplateDue(template, d("2026-02-28"))).toBe(true);
+    expect(isTemplateDue(template, d("2026-04-30"))).toBe(true);
+    expect(isTemplateDue(template, d("2026-04-29"))).toBe(false);
+  });
+
+  it("derives today from the site's local calendar rather than UTC", () => {
+    expect(localDateInTimeZone(new Date("2026-08-28T01:30:00.000Z"), "America/Los_Angeles")?.toISOString().slice(0, 10)).toBe("2026-08-27");
+    expect(localDateInTimeZone(new Date(), "Not/AZone")).toBeNull();
   });
 
   it("creates a deterministic UTC due time", () => {

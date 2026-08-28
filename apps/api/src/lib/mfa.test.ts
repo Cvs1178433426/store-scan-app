@@ -7,6 +7,7 @@ import {
   generateTotpSecret,
   hashBackupCodes,
   verifyTotp,
+  assertMfaEncryptionConfig,
 } from "./mfa.js";
 
 describe("MFA helpers", () => {
@@ -36,5 +37,20 @@ describe("MFA helpers", () => {
     expect(first.remaining).toHaveLength(7);
     const second = await consumeBackupCode(codes[0], first.remaining);
     expect(second.valid).toBe(false);
+  });
+
+  it("rejects a missing or shared MFA encryption key in production", () => {
+    const previous = { nodeEnv: process.env.NODE_ENV, mfa: process.env.MFA_ENCRYPTION_KEY, jwt: process.env.JWT_SECRET };
+    process.env.NODE_ENV = "production";
+    process.env.JWT_SECRET = "a".repeat(32);
+    delete process.env.MFA_ENCRYPTION_KEY;
+    expect(() => assertMfaEncryptionConfig()).toThrow(/MFA_ENCRYPTION_KEY/);
+    process.env.MFA_ENCRYPTION_KEY = process.env.JWT_SECRET;
+    expect(() => assertMfaEncryptionConfig()).toThrow(/must not equal/);
+    process.env.MFA_ENCRYPTION_KEY = "b".repeat(32);
+    expect(() => assertMfaEncryptionConfig()).not.toThrow();
+    process.env.NODE_ENV = previous.nodeEnv;
+    if (previous.mfa === undefined) delete process.env.MFA_ENCRYPTION_KEY; else process.env.MFA_ENCRYPTION_KEY = previous.mfa;
+    if (previous.jwt === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = previous.jwt;
   });
 });

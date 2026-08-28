@@ -158,6 +158,8 @@ model User {
   employeeNumber      String?   @unique
   passwordHash        String
   recoveryPinHash     String?
+  recoveryFailureCount Int     @default(0)
+  recoveryLockedUntil DateTime?
   mfaSecretEncrypted  String?
   mfaEnabled          Boolean   @default(false)
   mfaBackupCodeHashes Json?
@@ -183,6 +185,7 @@ model User {
 
   @@index([isActive])
   @@index([jobTitle, isActive])
+  @@index([recoveryLockedUntil])
 }
 
 model Organization {
@@ -478,7 +481,7 @@ model Product {
 
   // barcodeValue remains temporarily for backwards compatibility with the proven
   // Store Count flow. ProductIdentifier is the commercial multi-identifier model.
-  @@unique([barcodeValue])
+  @@unique([organizationId, barcodeValue])
   @@index([isActive])
   @@index([organizationId, isActive])
   @@index([categoryId])

@@ -120,8 +120,8 @@ function canManageSession(session: NonNullable<SessionRow>, userId: string, role
   return session.startedById === userId || role === "ADMIN";
 }
 
-async function findOrEnrichProduct(barcodeValue: string) {
-  const existing = await prisma.product.findUnique({ where: { barcodeValue } });
+async function findOrEnrichProduct(barcodeValue: string, organizationId: string) {
+  const existing = await prisma.product.findFirst({ where: { organizationId, barcodeValue } });
   if (existing) return existing;
 
   const lookup = await resolveProduct(barcodeValue);
@@ -133,20 +133,24 @@ async function findOrEnrichProduct(barcodeValue: string) {
   });
   const matchedCategory = matchExistingCategory(lookup.category, categories);
 
-  return prisma.product.upsert({
-    where: { barcodeValue },
-    update: {},
-    create: {
-      barcodeValue,
-      name: lookup.name.trim(),
-      manufacturer: lookup.brand?.trim() || null,
-      description: lookup.description?.trim() || null,
-      packageSize: lookup.size?.trim() || null,
-      imageUrl: lookup.imageUrl?.trim() || null,
-      categoryId: matchedCategory?.id ?? null,
-      isActive: true,
-    },
-  });
+  try {
+    return await prisma.product.create({
+      data: {
+        organizationId,
+        barcodeValue,
+        name: lookup.name.trim(),
+        manufacturer: lookup.brand?.trim() || null,
+        description: lookup.description?.trim() || null,
+        packageSize: lookup.size?.trim() || null,
+        imageUrl: lookup.imageUrl?.trim() || null,
+        categoryId: matchedCategory?.id ?? null,
+        isActive: true,
+      },
+    });
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) throw error;
+    return prisma.product.findFirst({ where: { organizationId, barcodeValue } });
+  }
 }
 
 async function findIdempotentEntry(clientScanId: string, sessionId: string) {
@@ -255,6 +259,15 @@ export async function storeCountRoutes(app: FastifyInstance) {
     if (!access.ok) return reply.code(access.code).send({ error: access.error });
     if (access.session.status !== "ACTIVE") return reply.code(409).send({ error: "count session is not active" });
 
+    if (!access.session.siteId) {
+      return reply.code(409).send({ error: "count session is not assigned to a site" });
+    }
+    const countSite = await prisma.site.findUnique({
+      where: { id: access.session.siteId },
+      select: { organizationId: true },
+    });
+    if (!countSite) return reply.code(409).send({ error: "count site no longer exists" });
+
     const { barcodeValue, locationId, quantityDelta, clientScanId } = parsed.data;
     const location = await prisma.storeLocation.findUnique({ where: { id: locationId } });
     if (!location) return reply.code(400).send({ error: "unknown locationId" });
@@ -269,10 +282,12 @@ export async function storeCountRoutes(app: FastifyInstance) {
       if (prior) return reply.send(prior);
     }
 
-    let product = await prisma.product.findUnique({ where: { barcodeValue } });
+    let product = await prisma.product.findFirst({
+      where: { organizationId: countSite.organizationId, barcodeValue },
+    });
     if (!product) {
       try {
-        product = await findOrEnrichProduct(barcodeValue);
+        product = await findOrEnrichProduct(barcodeValue, countSite.organizationId);
       } catch {
         product = null;
       }

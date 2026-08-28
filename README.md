@@ -117,7 +117,7 @@ update
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Set `POSTGRES_PASSWORD` and `JWT_SECRET` in `.env` first — both must be strong random values (e.g. `openssl rand -hex 32`). In production the API **refuses to start** if `JWT_SECRET` is missing or set to a known insecure default (`changeme`, `dev-secret-change-me`). Images come from `ghcr.io/<owner>/stash-api` / `stash-web` — set `GH_REPOSITORY_OWNER` (and the image names in `proxmox/install/stash-install.sh`) to match your fork.
+Set `POSTGRES_PASSWORD`, `JWT_SECRET`, and the separate `MFA_ENCRYPTION_KEY` in `.env` first. Both application keys must be strong, independent random values (for example, run `openssl rand -hex 32` twice). In production the API refuses to start if the JWT secret is insecure or if the MFA key is missing, short, or equal to the JWT secret. Images come from `ghcr.io/<owner>/stash-api` / `stash-web` — set `GH_REPOSITORY_OWNER` (and the image names in `proxmox/install/stash-install.sh`) to match your fork.
 
 ### 2. Create the first admin
 

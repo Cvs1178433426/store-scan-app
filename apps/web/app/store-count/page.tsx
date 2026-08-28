@@ -222,7 +222,9 @@ export default function StoreCountPage() {
             newlyFailed++;
             continue;
           }
-          break;
+          // A temporary failure for one scan must not block independent queued
+          // scans behind it. Leave this entry pending and continue the pass.
+          continue;
         }
       }
       refreshQueueState();

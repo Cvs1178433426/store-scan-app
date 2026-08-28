@@ -4,7 +4,7 @@ import { prisma } from "./prisma.js";
 export type PilotSite = { id: string; organizationId: string; timeZone: string };
 
 export async function ensurePilotSiteForUser(userId: string, role?: string): Promise<PilotSite | null> {
-  const existing = await prisma.site.findFirst({
+  const existing = await prisma.site.findMany({
     where: {
       isActive: true,
       organization: {
@@ -12,10 +12,12 @@ export async function ensurePilotSiteForUser(userId: string, role?: string): Pro
         memberships: { some: { userId, isActive: true } },
       },
     },
+    take: 2,
     orderBy: [{ code: "asc" }, { id: "asc" }],
     select: { id: true, organizationId: true, timeZone: true },
   });
-  if (existing) return existing;
+  if (existing.length === 1) return existing[0];
+  if (existing.length > 1) return null;
 
   if (role !== "ADMIN") {
     const organizations = await prisma.organization.findMany({
@@ -46,7 +48,7 @@ export async function ensurePilotSiteForUser(userId: string, role?: string): Pro
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pilot-site:${userId}`}))`;
 
-    const siteAfterLock = await tx.site.findFirst({
+    const sitesAfterLock = await tx.site.findMany({
       where: {
         isActive: true,
         organization: {
@@ -54,10 +56,12 @@ export async function ensurePilotSiteForUser(userId: string, role?: string): Pro
           memberships: { some: { userId, isActive: true } },
         },
       },
+      take: 2,
       orderBy: [{ code: "asc" }, { id: "asc" }],
       select: { id: true, organizationId: true, timeZone: true },
     });
-    if (siteAfterLock) return siteAfterLock;
+    if (sitesAfterLock.length === 1) return sitesAfterLock[0];
+    if (sitesAfterLock.length > 1) return null;
 
     let membership = await tx.organizationMembership.findFirst({
       where: { userId, isActive: true, organization: { isActive: true } },

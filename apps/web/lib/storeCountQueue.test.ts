@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   clearCountQueueForSession,
+  clearCountQueue,
   createCountScanId,
   enqueueCountScan,
   getCountQueue,
@@ -110,6 +111,12 @@ describe("storeCountQueue", () => {
 
   it("recovers from corrupted local storage", () => {
     localStorage.setItem("store_scan_count_queue", "{bad json");
+    expect(getCountQueue()).toEqual([]);
+  });
+
+  it("purges all employee-attributed scans on logout", () => {
+    enqueueCountScan({ sessionId: "s1", locationId: "l1", barcodeValue: "123", quantityDelta: 1 });
+    clearCountQueue();
     expect(getCountQueue()).toEqual([]);
   });
 });

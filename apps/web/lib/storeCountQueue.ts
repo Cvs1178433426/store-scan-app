@@ -74,6 +74,12 @@ function saveCountQueue(queue: QueuedCountScan[]): void {
   localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
 }
 
+/** Purge employee-attributed work before another user can sign in on this device. */
+export function clearCountQueue(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(QUEUE_KEY);
+}
+
 export function enqueueCountScan(
   entry: Omit<QueuedCountScan, "id" | "queuedAt" | "status" | "failureReason" | "failedAt">,
   id: string = newId(),

@@ -41,6 +41,12 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "CLEAR_USER_DATA") {
+    event.waitUntil(caches.delete(API_CACHE_NAME));
+  }
+});
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
 

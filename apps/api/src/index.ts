@@ -33,6 +33,7 @@ import { requestLocaleFromHeaders } from "./lib/requestLocale.js";
 import { getCachedTokenVersion } from "./lib/tokenVersion.js";
 import { isMediaAuthDisabled } from "./lib/mediaAuth.js";
 import { prisma } from "./lib/prisma.js";
+import { assertMfaEncryptionConfig } from "./lib/mfa.js";
 
 const INSECURE_JWT_SECRETS = new Set(["", "changeme", "dev-secret-change-me"]);
 
@@ -51,12 +52,14 @@ function resolveJwtSecret(): string {
 }
 
 const jwtSecret = resolveJwtSecret();
+assertMfaEncryptionConfig();
 
 if (isMediaAuthDisabled()) {
   console.warn("WARNING: MEDIA_AUTH_DISABLED=true — attachment file routes are unauthenticated. Do not use this in production.");
 }
 
 const app = Fastify({
+  trustProxy: process.env.TRUST_PROXY === "true" ? 1 : false,
   logger: {
     serializers: {
       req(request) {

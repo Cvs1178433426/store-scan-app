@@ -25,7 +25,26 @@ export function isTemplateDue(template: ScheduleTemplate, scheduledDate: Date): 
   if (template.recurrence === "ONCE") return day === start;
   if (template.recurrence === "DAILY") return true;
   if (template.recurrence === "WEEKLY") return template.weeklyDay === scheduledDate.getUTCDay();
-  return template.monthlyDay === scheduledDate.getUTCDate();
+  if (template.monthlyDay == null) return false;
+  const lastDayOfMonth = new Date(Date.UTC(
+    scheduledDate.getUTCFullYear(), scheduledDate.getUTCMonth() + 1, 0,
+  )).getUTCDate();
+  return Math.min(template.monthlyDay, lastDayOfMonth) === scheduledDate.getUTCDate();
+}
+
+export function localDateInTimeZone(now: Date, timeZone: string): Date | null {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(now);
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return dateOnly(`${values.year}-${values.month}-${values.day}`);
+  } catch {
+    return null;
+  }
 }
 
 function timeZoneOffsetMillis(instant: Date, timeZone: string): number {

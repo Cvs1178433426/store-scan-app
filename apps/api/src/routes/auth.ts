@@ -29,6 +29,31 @@ async function createEmployeeNumber(): Promise<string> {
   throw new Error("Unable to allocate a unique employee number.");
 }
 
+async function verifyRecoveryPin(user: {
+  id: string;
+  recoveryPinHash: string | null;
+  recoveryFailureCount: number;
+  recoveryLockedUntil: Date | null;
+}, pin: string): Promise<boolean> {
+  if (!user.recoveryPinHash || (user.recoveryLockedUntil && user.recoveryLockedUntil > new Date())) return false;
+  if (await bcrypt.compare(pin, user.recoveryPinHash)) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { recoveryFailureCount: 0, recoveryLockedUntil: null },
+    });
+    return true;
+  }
+  const shouldLock = user.recoveryFailureCount >= 4;
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      recoveryFailureCount: shouldLock ? 0 : { increment: 1 },
+      recoveryLockedUntil: shouldLock ? new Date(Date.now() + 15 * 60_000) : null,
+    },
+  });
+  return false;
+}
+
 export async function authRoutes(app: FastifyInstance) {
   app.get("/bootstrap/status", async () => {
     const userCount = await prisma.user.count();
@@ -87,7 +112,7 @@ export async function authRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
     if (!user || !user.isActive || !user.recoveryPinHash) return reply.code(401).send({ error: "We could not verify that account." });
-    const valid = await bcrypt.compare(parsed.data.recoveryPin, user.recoveryPinHash);
+    const valid = await verifyRecoveryPin(user, parsed.data.recoveryPin);
     if (!valid) return reply.code(401).send({ error: "We could not verify that account." });
     return { employeeNumber: user.employeeNumber, email: user.email };
   });
@@ -98,7 +123,7 @@ export async function authRoutes(app: FastifyInstance) {
     const identifier = parsed.data.identifier.trim();
     const user = await prisma.user.findFirst({ where: { OR: [{ email: identifier.toLowerCase() }, { employeeNumber: identifier.toUpperCase() }] } });
     if (!user || !user.isActive || !user.recoveryPinHash) return reply.code(401).send({ error: "We could not verify that account." });
-    const valid = await bcrypt.compare(parsed.data.recoveryPin, user.recoveryPinHash);
+    const valid = await verifyRecoveryPin(user, parsed.data.recoveryPin);
     if (!valid) return reply.code(401).send({ error: "We could not verify that account." });
     const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
     await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });

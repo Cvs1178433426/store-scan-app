@@ -95,7 +95,13 @@ export async function storeCountExportRoutes(app: FastifyInstance) {
     });
 
     if (!session) return reply.code(404).send({ error: "count session not found" });
-    if (session.startedById !== userId && role !== "ADMIN") {
+    if (session.siteId && role !== "ADMIN") {
+      const membership = await prisma.organizationMembership.findFirst({
+        where: { userId, isActive: true, organization: { sites: { some: { id: session.siteId, isActive: true } } } },
+        select: { id: true },
+      });
+      if (!membership) return reply.code(403).send({ error: "you do not have access to this count session" });
+    } else if (!session.siteId && session.startedById !== userId && role !== "ADMIN") {
       return reply.code(403).send({ error: "you do not have access to this count session" });
     }
 
