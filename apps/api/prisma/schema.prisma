@@ -182,6 +182,7 @@ model User {
   updatedTaskTemplates     TaskTemplate[]           @relation("TaskTemplateUpdatedBy")
   assignedTasks            TaskAssignment[]         @relation("TaskAssignedTo")
   completedTasks           TaskAssignment[]         @relation("TaskCompletedBy")
+  taskAssignmentEvents     TaskAssignmentEvent[]    @relation("TaskAssignmentEventActor")
 
   @@index([isActive])
   @@index([jobTitle, isActive])
@@ -203,6 +204,7 @@ model Organization {
   inventoryTransactions InventoryTransaction[]
   taskTemplates         TaskTemplate[]
   taskAssignments       TaskAssignment[]
+  taskAssignmentEvents   TaskAssignmentEvent[]
 
   @@index([isActive])
 }
@@ -247,6 +249,7 @@ model Site {
   inventoryTransactions InventoryTransaction[]
   taskTemplates         TaskTemplate[]
   taskAssignments       TaskAssignment[]
+  taskAssignmentEvents   TaskAssignmentEvent[]
 
   @@unique([organizationId, code])
   @@index([organizationId, isActive])
@@ -665,6 +668,9 @@ model TaskAssignment {
   organizationId String
   siteId         String?
   assignedToId   String
+  jobTitle       JobTitle?
+  recurrence     TaskRecurrence @default(ONCE)
+  rolloverPolicy TaskRolloverPolicy @default(REMAIN_OVERDUE)
   title          String
   instructions   String?
   scheduledDate  DateTime     @db.Date
@@ -683,9 +689,31 @@ model TaskAssignment {
   site         Site?         @relation(fields: [siteId], references: [id], onDelete: Cascade)
   assignedTo   User          @relation("TaskAssignedTo", fields: [assignedToId], references: [id], onDelete: Cascade)
   completedBy  User?         @relation("TaskCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  events       TaskAssignmentEvent[]
 
   @@unique([templateId, assignedToId, scheduledDate])
   @@index([assignedToId, scheduledDate, status])
   @@index([organizationId, siteId, scheduledDate, status])
   @@index([templateId])
+}
+
+model TaskAssignmentEvent {
+  id             String   @id @default(cuid())
+  assignmentId   String
+  organizationId String
+  siteId         String?
+  actorUserId    String?
+  action         String
+  fromStatus     TaskStatus?
+  toStatus       TaskStatus?
+  createdAt      DateTime @default(now())
+
+  assignment   TaskAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site?          @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  actor        User?          @relation("TaskAssignmentEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([assignmentId, createdAt])
+  @@index([organizationId, siteId, createdAt])
+  @@index([actorUserId, createdAt])
 }
