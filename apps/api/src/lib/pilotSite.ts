@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "./prisma.js";
 
-export type PilotSite = { id: string; organizationId: string };
+export type PilotSite = { id: string; organizationId: string; timeZone: string };
 
 export async function ensurePilotSiteForUser(userId: string, role?: string): Promise<PilotSite | null> {
   const existing = await prisma.site.findFirst({
@@ -13,7 +13,7 @@ export async function ensurePilotSiteForUser(userId: string, role?: string): Pro
       },
     },
     orderBy: [{ code: "asc" }, { id: "asc" }],
-    select: { id: true, organizationId: true },
+    select: { id: true, organizationId: true, timeZone: true },
   });
   if (existing) return existing;
 
@@ -28,7 +28,7 @@ export async function ensurePilotSiteForUser(userId: string, role?: string): Pro
           where: { isActive: true },
           take: 1,
           orderBy: [{ code: "asc" }, { id: "asc" }],
-          select: { id: true, organizationId: true },
+          select: { id: true, organizationId: true, timeZone: true },
         },
       },
     });
@@ -55,7 +55,7 @@ export async function ensurePilotSiteForUser(userId: string, role?: string): Pro
         },
       },
       orderBy: [{ code: "asc" }, { id: "asc" }],
-      select: { id: true, organizationId: true },
+      select: { id: true, organizationId: true, timeZone: true },
     });
     if (siteAfterLock) return siteAfterLock;
 
@@ -87,7 +87,7 @@ export async function ensurePilotSiteForUser(userId: string, role?: string): Pro
         type: "STORE",
         countryCode: "US",
       },
-      select: { id: true, organizationId: true },
+      select: { id: true, organizationId: true, timeZone: true },
     });
 
     await tx.storeLocation.updateMany({ where: { siteId: null }, data: { siteId: site.id } });

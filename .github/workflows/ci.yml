@@ -131,6 +131,9 @@ jobs:
       - name: Validate commercial tenant and append-only ledger integrity
         run: npx tsx scripts/commercialFoundationValidation.ts
 
+      - name: Validate role-based task scoping and recurrence idempotency
+        run: npx tsx scripts/taskFoundationValidation.ts
+
       - name: Exercise atomic counting and idempotent retries on PostgreSQL
         run: npx tsx scripts/storeCountDbValidation.ts
 

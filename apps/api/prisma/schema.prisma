@@ -114,32 +114,75 @@ enum StoreCountSessionStatus {
   CANCELLED
 }
 
-model User {
-  id                    String   @id @default(cuid())
-  name                  String
-  email                 String   @unique
-  employeeNumber        String?  @unique
-  passwordHash          String
-  recoveryPinHash       String?
-  mfaSecretEncrypted    String?
-  mfaEnabled            Boolean  @default(false)
-  mfaBackupCodeHashes   Json?
-  role                  UserRole @default(GENERAL)
-  isActive              Boolean  @default(true)
-  tokenVersion          Int      @default(0)
-  createdAt             DateTime @default(now())
+enum JobTitle {
+  STORE_MANAGER
+  INVENTORY_MANAGER
+  STOCK_COUNT_ASSOCIATE
+  RECEIVER
+  CASHIER_CUSTOMER_SERVICE
+  PHARMACY_TEAM
+}
 
-  createdItems             Item[]                     @relation("ItemCreatedBy")
+enum TaskRecurrence {
+  ONCE
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+  CANCELLED
+}
+
+enum TaskRolloverPolicy {
+  REMAIN_OVERDUE
+  ROLL_FORWARD
+  SKIP
+}
+
+model User {
+  id                  String    @id @default(cuid())
+  name                String
+  email               String    @unique
+  employeeNumber      String?   @unique
+  passwordHash        String
+  recoveryPinHash     String?
+  mfaSecretEncrypted  String?
+  mfaEnabled          Boolean   @default(false)
+  mfaBackupCodeHashes Json?
+  role                UserRole  @default(GENERAL)
+  isActive            Boolean   @default(true)
+  tokenVersion        Int       @default(0)
+  jobTitle            JobTitle?
+  createdAt           DateTime  @default(now())
+
+  createdItems             Item[]                   @relation("ItemCreatedBy")
   movements                StockMovement[]
   pushSubscriptions        PushSubscription[]
   auditSessions            AuditSession[]
   storeCountSessions       StoreCountSession[]
-  storeCountEntriesCounted StoreCountEntry[]          @relation("StoreCountEntryCounter")
-  storeCountScanLogs       StoreCountScanLog[]        @relation("StoreCountScanActor")
+  storeCountEntriesCounted StoreCountEntry[]        @relation("StoreCountEntryCounter")
+  storeCountScanLogs       StoreCountScanLog[]      @relation("StoreCountScanActor")
   organizationMemberships  OrganizationMembership[]
-  inventoryTransactions   InventoryTransaction[]      @relation("InventoryTransactionActor")
+  inventoryTransactions    InventoryTransaction[]   @relation("InventoryTransactionActor")
+  createdTaskTemplates     TaskTemplate[]           @relation("TaskTemplateCreatedBy")
+  updatedTaskTemplates     TaskTemplate[]           @relation("TaskTemplateUpdatedBy")
+  assignedTasks            TaskAssignment[]         @relation("TaskAssignedTo")
+  completedTasks           TaskAssignment[]         @relation("TaskCompletedBy")
 
   @@index([isActive])
+  @@index([jobTitle, isActive])
 }
 
 model Organization {
@@ -155,6 +198,8 @@ model Organization {
   products              Product[]
   productIdentifiers    ProductIdentifier[]
   inventoryTransactions InventoryTransaction[]
+  taskTemplates         TaskTemplate[]
+  taskAssignments       TaskAssignment[]
 
   @@index([isActive])
 }
@@ -188,14 +233,17 @@ model Site {
   region         String?
   postalCode     String?
   countryCode    String   @default("US")
+  timeZone       String   @default("America/New_York")
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization          Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   storeLocations        StoreLocation[]
   storeCountSessions    StoreCountSession[]
   inventoryTransactions InventoryTransaction[]
+  taskTemplates         TaskTemplate[]
+  taskAssignments       TaskAssignment[]
 
   @@unique([organizationId, code])
   @@index([organizationId, isActive])
@@ -228,12 +276,12 @@ model Category {
 }
 
 model Item {
-  id                 String    @id @default(cuid())
+  id                 String         @id @default(cuid())
   name               String
   manufacturer       String?
   description        String?
   packageSize        String?
-  quantity           Int       @default(1)
+  quantity           Int            @default(1)
   unit               String?
   locationId         String?
   categoryId         String?
@@ -245,21 +293,21 @@ model Item {
   expiryNotifiedAt   DateTime?
   warrantyExpiresAt  DateTime?
   warrantyNotifiedAt DateTime?
-  photoUrl            String?
-  notes               String?
-  wanted              Boolean   @default(false)
-  isActive            Boolean   @default(true)
-  itemType            ItemType      @default(CONSUMABLE)
-  condition           ItemCondition?
-  createdById         String?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-  deletedAt           DateTime?
-  lastAuditedAt       DateTime?
+  photoUrl           String?
+  notes              String?
+  wanted             Boolean        @default(false)
+  isActive           Boolean        @default(true)
+  itemType           ItemType       @default(CONSUMABLE)
+  condition          ItemCondition?
+  createdById        String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  deletedAt          DateTime?
+  lastAuditedAt      DateTime?
 
-  location           Location?          @relation(fields: [locationId], references: [id], onDelete: SetNull)
-  category           Category?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  createdBy          User?              @relation("ItemCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  location           Location?           @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  category           Category?           @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdBy          User?               @relation("ItemCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   barcodes           Barcode[]
   attachments        Attachment[]
   movements          StockMovement[]
@@ -273,13 +321,13 @@ model Item {
 }
 
 model Barcode {
-  id         String            @id @default(cuid())
-  itemId     String
-  value      String
-  symbology  BarcodeSymbology  @default(OTHER)
-  source     BarcodeSource     @default(EXISTING)
-  isPrimary  Boolean           @default(false)
-  createdAt  DateTime          @default(now())
+  id        String           @id @default(cuid())
+  itemId    String
+  value     String
+  symbology BarcodeSymbology @default(OTHER)
+  source    BarcodeSource    @default(EXISTING)
+  isPrimary Boolean          @default(false)
+  createdAt DateTime         @default(now())
 
   item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
@@ -363,8 +411,8 @@ model AuditSession {
   startedAt       DateTime           @default(now())
   completedAt     DateTime?
 
-  location  Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  startedBy User?    @relation(fields: [startedById], references: [id], onDelete: SetNull)
+  location  Location     @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  startedBy User?        @relation(fields: [startedById], references: [id], onDelete: SetNull)
   checks    AuditCheck[]
 
   @@index([locationId, status])
@@ -408,7 +456,7 @@ model StoreLocation {
 }
 
 model Product {
-  id             String    @id @default(cuid())
+  id             String   @id @default(cuid())
   organizationId String?
   barcodeValue   String?
   name           String
@@ -417,12 +465,12 @@ model Product {
   packageSize    String?
   imageUrl       String?
   categoryId     String?
-  isActive       Boolean   @default(true)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  organization          Organization?        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  category              Category?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  organization          Organization?          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  category              Category?              @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   entries               StoreCountEntry[]
   identifiers           ProductIdentifier[]
   packaging             ProductPackaging[]
@@ -437,23 +485,23 @@ model Product {
 }
 
 model ProductPackaging {
-  id               String                @id @default(cuid())
-  productId        String
-  level            ProductPackagingLevel
-  name             String?
-  unitsOfEach      Int                   @default(1)
-  length           Decimal?              @db.Decimal(12, 4)
-  width            Decimal?              @db.Decimal(12, 4)
-  height           Decimal?              @db.Decimal(12, 4)
-  dimensionUnit    String?
-  weight           Decimal?              @db.Decimal(12, 4)
-  weightUnit       String?
-  isOrderable      Boolean               @default(false)
-  isReceivable     Boolean               @default(true)
-  isSellable       Boolean               @default(false)
-  isActive         Boolean               @default(true)
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
+  id            String                @id @default(cuid())
+  productId     String
+  level         ProductPackagingLevel
+  name          String?
+  unitsOfEach   Int                   @default(1)
+  length        Decimal?              @db.Decimal(12, 4)
+  width         Decimal?              @db.Decimal(12, 4)
+  height        Decimal?              @db.Decimal(12, 4)
+  dimensionUnit String?
+  weight        Decimal?              @db.Decimal(12, 4)
+  weightUnit    String?
+  isOrderable   Boolean               @default(false)
+  isReceivable  Boolean               @default(true)
+  isSellable    Boolean               @default(false)
+  isActive      Boolean               @default(true)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
 
   product               Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
   identifiers           ProductIdentifier[]
@@ -515,10 +563,10 @@ model StoreCountEntry {
   scannedAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  session   StoreCountSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  product   Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
-  location  StoreLocation     @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  countedBy User?             @relation("StoreCountEntryCounter", fields: [countedByUserId], references: [id], onDelete: SetNull)
+  session   StoreCountSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  product   Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
+  location  StoreLocation       @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  countedBy User?               @relation("StoreCountEntryCounter", fields: [countedByUserId], references: [id], onDelete: SetNull)
   scanLogs  StoreCountScanLog[]
 
   @@unique([sessionId, locationId, barcodeValue])
@@ -575,4 +623,66 @@ model InventoryTransaction {
   @@index([productId, occurredAt])
   @@index([referenceType, referenceId])
   @@index([actorUserId, occurredAt])
+}
+
+model TaskTemplate {
+  id             String             @id @default(cuid())
+  organizationId String
+  siteId         String?
+  jobTitle       JobTitle
+  title          String
+  instructions   String?
+  recurrence     TaskRecurrence
+  startDate      DateTime           @db.Date
+  endDate        DateTime?          @db.Date
+  weeklyDay      Int?
+  monthlyDay     Int?
+  dueTime        String?
+  priority       TaskPriority       @default(NORMAL)
+  rolloverPolicy TaskRolloverPolicy @default(REMAIN_OVERDUE)
+  isActive       Boolean            @default(true)
+  createdById    String
+  updatedById    String
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site?            @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  createdBy    User             @relation("TaskTemplateCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy    User             @relation("TaskTemplateUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  assignments  TaskAssignment[]
+
+  @@index([organizationId, isActive, jobTitle])
+  @@index([siteId, isActive, jobTitle])
+}
+
+model TaskAssignment {
+  id             String       @id @default(cuid())
+  templateId     String?
+  organizationId String
+  siteId         String?
+  assignedToId   String
+  title          String
+  instructions   String?
+  scheduledDate  DateTime     @db.Date
+  dueAt          DateTime?
+  status         TaskStatus   @default(OPEN)
+  priority       TaskPriority @default(NORMAL)
+  employeeNote   String?
+  managerNote    String?
+  completedAt    DateTime?
+  completedById  String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  template     TaskTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site?         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  assignedTo   User          @relation("TaskAssignedTo", fields: [assignedToId], references: [id], onDelete: Cascade)
+  completedBy  User?         @relation("TaskCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+
+  @@unique([templateId, assignedToId, scheduledDate])
+  @@index([assignedToId, scheduledDate, status])
+  @@index([organizationId, siteId, scheduledDate, status])
+  @@index([templateId])
 }

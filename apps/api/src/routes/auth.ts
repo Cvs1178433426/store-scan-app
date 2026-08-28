@@ -120,7 +120,7 @@ export async function authRoutes(app: FastifyInstance) {
   app.get("/me", { preHandler: [app.authenticate] }, async (request, reply) => {
     const user = await prisma.user.findUnique({ where: { id: request.user.sub } });
     if (!user || !user.isActive) return reply.code(401).send({ error: "unauthorized" });
-    return { id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, mfaEnabled: user.mfaEnabled };
+    return { id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, jobTitle: user.jobTitle, mfaEnabled: user.mfaEnabled };
   });
 
   app.post("/users", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
@@ -133,7 +133,7 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   app.get("/users", { preHandler: [app.authenticate, app.requireAdmin] }, async () => {
-    return prisma.user.findMany({ select: { id: true, name: true, email: true, employeeNumber: true, role: true, isActive: true, mfaEnabled: true }, orderBy: { createdAt: "asc" } });
+    return prisma.user.findMany({ select: { id: true, name: true, email: true, employeeNumber: true, role: true, jobTitle: true, isActive: true, mfaEnabled: true }, orderBy: { createdAt: "asc" } });
   });
 
   app.delete("/users/:id", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
@@ -186,6 +186,6 @@ export async function authRoutes(app: FastifyInstance) {
     }
     const user = await prisma.user.update({ where: { id: userId }, data: updateData });
     if (newPassword) { await bumpTokenVersion(userId); clearMediaCookie(reply); } else invalidateTokenVersionCache(userId);
-    return { id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, mfaEnabled: user.mfaEnabled };
+    return { id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, jobTitle: user.jobTitle, mfaEnabled: user.mfaEnabled };
   });
 }

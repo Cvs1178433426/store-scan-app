@@ -1,10 +1,13 @@
 export type UserRole = "ADMIN" | "GENERAL";
+export type JobTitle = "STORE_MANAGER" | "INVENTORY_MANAGER" | "STOCK_COUNT_ASSOCIATE" | "RECEIVER" | "CASHIER_CUSTOMER_SERVICE" | "PHARMACY_TEAM";
 
 export interface User {
   id: string;
   name: string;
   email: string;
   role: UserRole;
+  employeeNumber?: string | null;
+  jobTitle?: JobTitle | null;
 }
 
 export type BarcodeSymbology = "EAN13" | "UPCA" | "CODE128" | "QR" | "DATA_MATRIX" | "OTHER";
