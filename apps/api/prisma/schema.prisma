@@ -1,0 +1,691 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  GENERAL
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MANAGER
+  BUYER
+  RECEIVER
+  INVENTORY
+  PICKER
+  CHECKER
+  SHIPPING
+  ACCOUNTING
+  VIEWER
+}
+
+enum SiteType {
+  STORE
+  WAREHOUSE
+  DISTRIBUTION_CENTER
+  OFFICE
+  OTHER
+}
+
+enum ProductIdentifierType {
+  UPC
+  EAN
+  GTIN
+  NDC
+  CUSTOMER_SKU
+  MANUFACTURER_ITEM
+  OTHER
+}
+
+enum ProductPackagingLevel {
+  EACH
+  INNER
+  CASE
+  PALLET
+  OTHER
+}
+
+enum InventoryTransactionType {
+  RECEIVE
+  SHIP
+  TRANSFER_IN
+  TRANSFER_OUT
+  DAMAGE
+  RETURN_TO_VENDOR
+  COUNT_ADJUSTMENT
+  MANUAL_ADJUSTMENT
+}
+
+enum BarcodeSource {
+  GENERATED
+  EXISTING
+  MATTER
+  SERIAL
+}
+
+enum ItemType {
+  CONSUMABLE
+  ASSET
+}
+
+enum ItemCondition {
+  NEW
+  IN_USE
+  NEEDS_REPAIR
+  RETIRED
+}
+
+enum BarcodeSymbology {
+  EAN13
+  UPCA
+  CODE128
+  QR
+  DATA_MATRIX
+  OTHER
+}
+
+enum StockMovementReason {
+  RESTOCK
+  CONSUME
+  ADJUST
+}
+
+enum AuditSessionStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum AuditCheckStatus {
+  PENDING
+  FOUND
+  UNEXPECTED
+}
+
+enum StoreCountSessionStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum JobTitle {
+  STORE_MANAGER
+  INVENTORY_MANAGER
+  STOCK_COUNT_ASSOCIATE
+  RECEIVER
+  CASHIER_CUSTOMER_SERVICE
+  PHARMACY_TEAM
+}
+
+enum TaskRecurrence {
+  ONCE
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+  CANCELLED
+}
+
+enum TaskRolloverPolicy {
+  REMAIN_OVERDUE
+  ROLL_FORWARD
+  SKIP
+}
+
+model User {
+  id                  String    @id @default(cuid())
+  name                String
+  email               String    @unique
+  employeeNumber      String?   @unique
+  passwordHash        String
+  recoveryPinHash     String?
+  recoveryFailureCount Int     @default(0)
+  recoveryLockedUntil DateTime?
+  mfaSecretEncrypted  String?
+  mfaEnabled          Boolean   @default(false)
+  mfaBackupCodeHashes Json?
+  role                UserRole  @default(GENERAL)
+  isActive            Boolean   @default(true)
+  tokenVersion        Int       @default(0)
+  jobTitle            JobTitle?
+  createdAt           DateTime  @default(now())
+
+  createdItems             Item[]                   @relation("ItemCreatedBy")
+  movements                StockMovement[]
+  pushSubscriptions        PushSubscription[]
+  auditSessions            AuditSession[]
+  storeCountSessions       StoreCountSession[]
+  storeCountEntriesCounted StoreCountEntry[]        @relation("StoreCountEntryCounter")
+  storeCountScanLogs       StoreCountScanLog[]      @relation("StoreCountScanActor")
+  organizationMemberships  OrganizationMembership[]
+  inventoryTransactions    InventoryTransaction[]   @relation("InventoryTransactionActor")
+  createdTaskTemplates     TaskTemplate[]           @relation("TaskTemplateCreatedBy")
+  updatedTaskTemplates     TaskTemplate[]           @relation("TaskTemplateUpdatedBy")
+  assignedTasks            TaskAssignment[]         @relation("TaskAssignedTo")
+  completedTasks           TaskAssignment[]         @relation("TaskCompletedBy")
+
+  @@index([isActive])
+  @@index([jobTitle, isActive])
+  @@index([recoveryLockedUntil])
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships           OrganizationMembership[]
+  sites                 Site[]
+  products              Product[]
+  productIdentifiers    ProductIdentifier[]
+  inventoryTransactions InventoryTransaction[]
+  taskTemplates         TaskTemplate[]
+  taskAssignments       TaskAssignment[]
+
+  @@index([isActive])
+}
+
+model OrganizationMembership {
+  id             String           @id @default(cuid())
+  organizationId String
+  userId         String
+  role           OrganizationRole @default(VIEWER)
+  isActive       Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId, isActive])
+  @@index([organizationId, role, isActive])
+}
+
+model Site {
+  id             String   @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  type           SiteType @default(STORE)
+  address1       String?
+  address2       String?
+  city           String?
+  region         String?
+  postalCode     String?
+  countryCode    String   @default("US")
+  timeZone       String   @default("America/New_York")
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  storeLocations        StoreLocation[]
+  storeCountSessions    StoreCountSession[]
+  inventoryTransactions InventoryTransaction[]
+  taskTemplates         TaskTemplate[]
+  taskAssignments       TaskAssignment[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, isActive])
+}
+
+model Location {
+  id        String   @id @default(cuid())
+  name      String
+  parentId  String?
+  photoUrl  String?
+  notes     String?
+  createdAt DateTime @default(now())
+
+  parent        Location?      @relation("LocationTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children      Location[]     @relation("LocationTree")
+  items         Item[]
+  auditSessions AuditSession[]
+}
+
+model Category {
+  id       String  @id @default(cuid())
+  name     String
+  parentId String?
+  isActive Boolean @default(true)
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children Category[] @relation("CategoryTree")
+  items    Item[]
+  products Product[]
+}
+
+model Item {
+  id                 String         @id @default(cuid())
+  name               String
+  manufacturer       String?
+  description        String?
+  packageSize        String?
+  quantity           Int            @default(1)
+  unit               String?
+  locationId         String?
+  categoryId         String?
+  minQuantity        Int?
+  purchaseDate       DateTime?
+  price              Float?
+  currency           String?
+  expiryDate         DateTime?
+  expiryNotifiedAt   DateTime?
+  warrantyExpiresAt  DateTime?
+  warrantyNotifiedAt DateTime?
+  photoUrl           String?
+  notes              String?
+  wanted             Boolean        @default(false)
+  isActive           Boolean        @default(true)
+  itemType           ItemType       @default(CONSUMABLE)
+  condition          ItemCondition?
+  createdById        String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  deletedAt          DateTime?
+  lastAuditedAt      DateTime?
+
+  location           Location?           @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  category           Category?           @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdBy          User?               @relation("ItemCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  barcodes           Barcode[]
+  attachments        Attachment[]
+  movements          StockMovement[]
+  maintenanceRecords MaintenanceRecord[]
+  auditChecks        AuditCheck[]
+
+  @@index([locationId])
+  @@index([categoryId])
+  @@index([expiryDate])
+  @@index([isActive])
+}
+
+model Barcode {
+  id        String           @id @default(cuid())
+  itemId    String
+  value     String
+  symbology BarcodeSymbology @default(OTHER)
+  source    BarcodeSource    @default(EXISTING)
+  isPrimary Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([value])
+}
+
+model ProductLookupCache {
+  barcodeValue String   @id
+  name         String?
+  brand        String?
+  imageUrl     String?
+  provider     String?
+  fetchedAt    DateTime @default(now())
+  rawPayload   Json?
+}
+
+model StockMovement {
+  id         String              @id @default(cuid())
+  itemId     String
+  delta      Int
+  reason     StockMovementReason @default(ADJUST)
+  userId     String?
+  occurredAt DateTime            @default(now())
+
+  item Item  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([itemId, occurredAt])
+}
+
+model MaintenanceRecord {
+  id          String   @id @default(cuid())
+  itemId      String
+  date        DateTime
+  description String
+  cost        Float?
+  currency    String?
+  createdAt   DateTime @default(now())
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, date])
+}
+
+model Attachment {
+  id         String   @id @default(cuid())
+  filePath   String
+  mimeType   String
+  uploadedAt DateTime @default(now())
+
+  itemId String?
+  item   Item?   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  locale    String   @default("ko")
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AuditSession {
+  id              String             @id @default(cuid())
+  locationId      String
+  includeChildren Boolean            @default(true)
+  status          AuditSessionStatus @default(ACTIVE)
+  startedById     String?
+  startedAt       DateTime           @default(now())
+  completedAt     DateTime?
+
+  location  Location     @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  startedBy User?        @relation(fields: [startedById], references: [id], onDelete: SetNull)
+  checks    AuditCheck[]
+
+  @@index([locationId, status])
+  @@index([startedById])
+}
+
+model AuditCheck {
+  id               String           @id @default(cuid())
+  sessionId        String
+  itemId           String
+  expectedQuantity Int
+  actualQuantity   Int?
+  status           AuditCheckStatus @default(PENDING)
+  checkedAt        DateTime?
+
+  session AuditSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  item    Item         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, itemId])
+  @@index([sessionId, status])
+}
+
+model StoreLocation {
+  id        String   @id @default(cuid())
+  siteId    String?
+  code      String
+  name      String?
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  site                  Site?                  @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  entries               StoreCountEntry[]
+  inventoryTransactions InventoryTransaction[]
+
+  // Legacy global uniqueness is retained during the compatibility phase.
+  // A later migration will make siteId required and replace this with @@unique([siteId, code]).
+  @@unique([code])
+  @@index([isActive, sortOrder])
+  @@index([siteId, isActive, sortOrder])
+}
+
+model Product {
+  id             String   @id @default(cuid())
+  organizationId String?
+  barcodeValue   String?
+  name           String
+  manufacturer   String?
+  description    String?
+  packageSize    String?
+  imageUrl       String?
+  categoryId     String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization          Organization?          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  category              Category?              @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  entries               StoreCountEntry[]
+  identifiers           ProductIdentifier[]
+  packaging             ProductPackaging[]
+  inventoryTransactions InventoryTransaction[]
+
+  // barcodeValue remains temporarily for backwards compatibility with the proven
+  // Store Count flow. ProductIdentifier is the commercial multi-identifier model.
+  @@unique([organizationId, barcodeValue])
+  @@index([isActive])
+  @@index([organizationId, isActive])
+  @@index([categoryId])
+}
+
+model ProductPackaging {
+  id            String                @id @default(cuid())
+  productId     String
+  level         ProductPackagingLevel
+  name          String?
+  unitsOfEach   Int                   @default(1)
+  length        Decimal?              @db.Decimal(12, 4)
+  width         Decimal?              @db.Decimal(12, 4)
+  height        Decimal?              @db.Decimal(12, 4)
+  dimensionUnit String?
+  weight        Decimal?              @db.Decimal(12, 4)
+  weightUnit    String?
+  isOrderable   Boolean               @default(false)
+  isReceivable  Boolean               @default(true)
+  isSellable    Boolean               @default(false)
+  isActive      Boolean               @default(true)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  product               Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  identifiers           ProductIdentifier[]
+  inventoryTransactions InventoryTransaction[]
+
+  @@unique([productId, level, unitsOfEach])
+  @@index([productId, isActive])
+}
+
+model ProductIdentifier {
+  id              String                @id @default(cuid())
+  organizationId  String
+  productId       String
+  packagingId     String?
+  type            ProductIdentifierType
+  value           String
+  isPrimary       Boolean               @default(false)
+  source          String?
+  sourceUpdatedAt DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  packaging    ProductPackaging? @relation(fields: [packagingId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, type, value])
+  @@index([productId, isPrimary])
+  @@index([packagingId])
+}
+
+model StoreCountSession {
+  id          String                  @id @default(cuid())
+  siteId      String?
+  name        String?
+  status      StoreCountSessionStatus @default(ACTIVE)
+  startedById String?
+  startedAt   DateTime                @default(now())
+  completedAt DateTime?
+  updatedAt   DateTime                @updatedAt
+
+  site      Site?             @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  startedBy User?             @relation(fields: [startedById], references: [id], onDelete: SetNull)
+  entries   StoreCountEntry[]
+
+  @@index([siteId, status, startedAt])
+  @@index([startedById, status])
+  @@index([status, startedAt])
+}
+
+model StoreCountEntry {
+  id              String   @id @default(cuid())
+  sessionId       String
+  productId       String?
+  barcodeValue    String
+  locationId      String
+  quantity        Int      @default(1)
+  countedByUserId String?
+  scannedAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  session   StoreCountSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  product   Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
+  location  StoreLocation       @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  countedBy User?               @relation("StoreCountEntryCounter", fields: [countedByUserId], references: [id], onDelete: SetNull)
+  scanLogs  StoreCountScanLog[]
+
+  @@unique([sessionId, locationId, barcodeValue])
+  @@index([sessionId, locationId])
+  @@index([sessionId, barcodeValue])
+  @@index([productId])
+  @@index([locationId])
+  @@index([countedByUserId])
+}
+
+model StoreCountScanLog {
+  idempotencyKey String   @id
+  entryId        String
+  sessionId      String
+  userId         String?
+  quantityDelta  Int
+  createdAt      DateTime @default(now())
+
+  entry StoreCountEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  user  User?           @relation("StoreCountScanActor", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId])
+  @@index([entryId])
+  @@index([userId])
+}
+
+model InventoryTransaction {
+  id             String                   @id @default(cuid())
+  organizationId String
+  siteId         String
+  locationId     String
+  productId      String
+  packagingId    String?
+  type           InventoryTransactionType
+  quantity       Decimal                  @db.Decimal(18, 4)
+  unitOfMeasure  String                   @default("EACH")
+  referenceType  String?
+  referenceId    String?
+  actorUserId    String?
+  reason         String?
+  metadata       Json?
+  occurredAt     DateTime                 @default(now())
+  createdAt      DateTime                 @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  site         Site              @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  location     StoreLocation     @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  product      Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  packaging    ProductPackaging? @relation(fields: [packagingId], references: [id], onDelete: SetNull)
+  actor        User?             @relation("InventoryTransactionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, siteId, occurredAt])
+  @@index([locationId, productId, occurredAt])
+  @@index([productId, occurredAt])
+  @@index([referenceType, referenceId])
+  @@index([actorUserId, occurredAt])
+}
+
+model TaskTemplate {
+  id             String             @id @default(cuid())
+  organizationId String
+  siteId         String?
+  jobTitle       JobTitle
+  title          String
+  instructions   String?
+  recurrence     TaskRecurrence
+  startDate      DateTime           @db.Date
+  endDate        DateTime?          @db.Date
+  weeklyDay      Int?
+  monthlyDay     Int?
+  dueTime        String?
+  priority       TaskPriority       @default(NORMAL)
+  rolloverPolicy TaskRolloverPolicy @default(REMAIN_OVERDUE)
+  isActive       Boolean            @default(true)
+  createdById    String
+  updatedById    String
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site?            @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  createdBy    User             @relation("TaskTemplateCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy    User             @relation("TaskTemplateUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  assignments  TaskAssignment[]
+
+  @@index([organizationId, isActive, jobTitle])
+  @@index([siteId, isActive, jobTitle])
+}
+
+model TaskAssignment {
+  id             String       @id @default(cuid())
+  templateId     String?
+  organizationId String
+  siteId         String?
+  assignedToId   String
+  title          String
+  instructions   String?
+  scheduledDate  DateTime     @db.Date
+  dueAt          DateTime?
+  status         TaskStatus   @default(OPEN)
+  priority       TaskPriority @default(NORMAL)
+  employeeNote   String?
+  managerNote    String?
+  completedAt    DateTime?
+  completedById  String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  template     TaskTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site?         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  assignedTo   User          @relation("TaskAssignedTo", fields: [assignedToId], references: [id], onDelete: Cascade)
+  completedBy  User?         @relation("TaskCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+
+  @@unique([templateId, assignedToId, scheduledDate])
+  @@index([assignedToId, scheduledDate, status])
+  @@index([organizationId, siteId, scheduledDate, status])
+  @@index([templateId])
+}

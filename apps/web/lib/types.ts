@@ -1,0 +1,178 @@
+export type UserRole = "ADMIN" | "GENERAL";
+export type JobTitle = "STORE_MANAGER" | "INVENTORY_MANAGER" | "STOCK_COUNT_ASSOCIATE" | "RECEIVER" | "CASHIER_CUSTOMER_SERVICE" | "PHARMACY_TEAM";
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  employeeNumber?: string | null;
+  jobTitle?: JobTitle | null;
+}
+
+export type BarcodeSymbology = "EAN13" | "UPCA" | "CODE128" | "QR" | "DATA_MATRIX" | "OTHER";
+export type BarcodeSource = "GENERATED" | "EXISTING" | "MATTER" | "SERIAL";
+
+export interface Barcode {
+  id: string;
+  itemId: string;
+  value: string;
+  symbology: BarcodeSymbology;
+  source: BarcodeSource;
+  isPrimary: boolean;
+}
+
+export interface Location {
+  id: string;
+  name: string;
+  parentId: string | null;
+  photoUrl: string | null;
+  notes: string | null;
+  _count?: { items: number };
+  freshness?: FreshnessSummary;
+}
+
+export interface FreshnessSummary {
+  freshCount: number;
+  totalCount: number;
+  ratio: number;
+  percent: number;
+}
+
+export interface XpBreakdownEntry { reason: string; points: number; }
+export interface XpAward { total: number; breakdown: XpBreakdownEntry[]; }
+
+export interface InsightsUntouched { id: string; name: string; itemType: ItemType; lastTouchAt: string; daysSinceTouch: number; }
+export interface InsightsConsumed { itemId: string; name: string; consumedQty: number; }
+export interface InsightsDuplicate { itemId: string; name: string; restockCount: number; restockQty: number; }
+export interface InsightsPurchasedItem { id: string; name: string; price: number | null; currency: string | null; purchasedAt: string; }
+export interface InsightsResponse {
+  range: { start: string; end: string };
+  untouchedDays: number;
+  tzOffsetMinutes?: number;
+  untouched: InsightsUntouched[];
+  topConsumed: InsightsConsumed[];
+  duplicatePurchases: InsightsDuplicate[];
+  purchased: { items: InsightsPurchasedItem[]; totalByCurrency: Record<string, number> };
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  parentId: string | null;
+  isActive: boolean;
+  _count?: { items: number };
+}
+
+export interface Attachment { id: string; filePath: string; mimeType: string; uploadedAt: string; }
+export type StockMovementReason = "RESTOCK" | "CONSUME" | "ADJUST";
+export interface StockMovement { id: string; itemId: string; delta: number; reason: StockMovementReason; occurredAt: string; }
+export interface StockMovementWithItem extends StockMovement {
+  item: { id: string; name: string; photoUrl: string | null; unit: string | null };
+  user: { id: string; name: string } | null;
+}
+
+export type ItemType = "CONSUMABLE" | "ASSET";
+export type ItemCondition = "NEW" | "IN_USE" | "NEEDS_REPAIR" | "RETIRED";
+
+export interface MaintenanceRecord {
+  id: string;
+  itemId: string;
+  date: string;
+  description: string;
+  cost: number | null;
+  currency: string | null;
+  createdAt: string;
+}
+
+export interface Item {
+  id: string;
+  name: string;
+  manufacturer: string | null;
+  description: string | null;
+  packageSize: string | null;
+  quantity: number;
+  unit: string | null;
+  locationId: string | null;
+  categoryId: string | null;
+  minQuantity: number | null;
+  purchaseDate: string | null;
+  price: number | null;
+  currency: string | null;
+  expiryDate: string | null;
+  warrantyExpiresAt: string | null;
+  photoUrl: string | null;
+  notes: string | null;
+  wanted: boolean;
+  isActive: boolean;
+  itemType: ItemType;
+  condition: ItemCondition | null;
+  createdAt: string;
+  updatedAt: string;
+  lastAuditedAt: string | null;
+  location: Location | null;
+  category: Category | null;
+  barcodes: Barcode[];
+  attachments?: Attachment[];
+  movements?: StockMovement[];
+  maintenanceRecords?: MaintenanceRecord[];
+}
+
+export interface ProductLookupPreview {
+  found: boolean;
+  name?: string;
+  brand?: string;
+  description?: string;
+  size?: string;
+  category?: string;
+  imageUrl?: string;
+  provider?: string;
+}
+
+export interface ScanResult {
+  item: Item;
+  matched: boolean;
+  created: boolean;
+  lookup?: ProductLookupPreview;
+  xp?: XpAward;
+}
+
+export type AuditCheckStatus = "PENDING" | "FOUND" | "UNEXPECTED";
+export type AuditSessionStatus = "ACTIVE" | "COMPLETED" | "CANCELLED";
+export type AuditUnscannedAction = "ZERO" | "MOVE" | "LEAVE";
+
+export interface AuditCheck {
+  id: string;
+  sessionId: string;
+  itemId: string;
+  expectedQuantity: number;
+  actualQuantity: number | null;
+  status: AuditCheckStatus;
+  checkedAt: string | null;
+  item: Item;
+}
+
+export interface AuditProgress { expectedTotal: number; foundExpected: number; pending: number; unexpected: number; }
+export interface AuditSession {
+  id: string;
+  locationId: string;
+  includeChildren: boolean;
+  status: AuditSessionStatus;
+  startedAt: string;
+  completedAt: string | null;
+  location: Location;
+  startedBy: { id: string; name: string } | null;
+  checks: AuditCheck[];
+  progress: AuditProgress;
+}
+
+export type AuditScanResult =
+  | { status: "unknown"; barcodeValue: string; session: AuditSession }
+  | {
+      status: "expected" | "already_found" | "unexpected";
+      item: Item;
+      check: AuditCheck | null;
+      inScope: boolean;
+      sessionLocationId: string;
+      session: AuditSession;
+    };
