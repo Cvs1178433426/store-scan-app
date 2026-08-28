@@ -1,19 +1,58 @@
 import type { FastifyInstance } from "fastify";
 import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
+import { Prisma } from "@prisma/client";
 import {
   bootstrapAdminSchema,
   createUserSchema,
   loginSchema,
+  recoverPasswordSchema,
+  recoverUserIdSchema,
+  registerSchema,
   updateProfileSchema,
 } from "@stash/shared";
 import { prisma } from "../lib/prisma.js";
 import { t } from "../lib/i18n.js";
 import { bumpTokenVersion, invalidateTokenVersionCache } from "../lib/tokenVersion.js";
-import { clearMediaCookie, setMediaCookie } from "../lib/mediaAuth.js";
+import { clearMediaCookie } from "../lib/mediaAuth.js";
 
-/** API JWT 수명 — 자체 호스팅이라 재로그인 부담을 고려해 7일로 둔다(기존 90일에서 단축). */
-const JWT_EXPIRES_IN = "7d";
+function newEmployeeNumber(): string {
+  return `EMP-${randomBytes(5).toString("hex").toUpperCase()}`;
+}
+
+async function createEmployeeNumber(): Promise<string> {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const candidate = newEmployeeNumber();
+    const exists = await prisma.user.findUnique({ where: { employeeNumber: candidate }, select: { id: true } });
+    if (!exists) return candidate;
+  }
+  throw new Error("Unable to allocate a unique employee number.");
+}
+
+async function verifyRecoveryPin(user: {
+  id: string;
+  recoveryPinHash: string | null;
+  recoveryFailureCount: number;
+  recoveryLockedUntil: Date | null;
+}, pin: string): Promise<boolean> {
+  if (!user.recoveryPinHash || (user.recoveryLockedUntil && user.recoveryLockedUntil > new Date())) return false;
+  if (await bcrypt.compare(pin, user.recoveryPinHash)) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { recoveryFailureCount: 0, recoveryLockedUntil: null },
+    });
+    return true;
+  }
+  const shouldLock = user.recoveryFailureCount >= 4;
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      recoveryFailureCount: shouldLock ? 0 : { increment: 1 },
+      recoveryLockedUntil: shouldLock ? new Date(Date.now() + 15 * 60_000) : null,
+    },
+  });
+  return false;
+}
 
 export async function authRoutes(app: FastifyInstance) {
   app.get("/bootstrap/status", async () => {
@@ -24,56 +63,74 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/bootstrap/admin", async (request, reply) => {
     const parsed = bootstrapAdminSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-
     const userCount = await prisma.user.count();
-    if (userCount > 0) {
-      return reply.code(409).send({ error: t("bootstrapDisabled", request.locale) });
-    }
+    if (userCount > 0) return reply.code(409).send({ error: t("bootstrapDisabled", request.locale) });
 
     const { name, email, password } = parsed.data;
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({
-      data: { name, email, passwordHash, role: "ADMIN" },
-    });
-    return reply
-      .code(201)
-      .send({ id: user.id, name: user.name, email: user.email, role: user.role });
+    const employeeNumber = await createEmployeeNumber();
+    const user = await prisma.user.create({ data: { name, email, employeeNumber, passwordHash, role: "ADMIN" } });
+    return reply.code(201).send({ id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role });
   });
 
-  app.post(
-    "/login",
-    // 무차별 대입 방어: IP당 15분에 10회로 제한.
-    { config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } },
-    async (request, reply) => {
-      const parsed = loginSchema.safeParse(request.body);
-      if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+  app.post("/register", { config: { rateLimit: { max: 5, timeWindow: "1 hour" } } }, async (request, reply) => {
+    const parsed = registerSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const { name, email, password, recoveryPin } = parsed.data;
+    const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+    if (existing) return reply.code(409).send({ error: "An account with that email already exists." });
 
-      const { email, password } = parsed.data;
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user) return reply.code(401).send({ error: t("invalidCredentials", request.locale) });
+    const [passwordHash, recoveryPinHash, employeeNumber] = await Promise.all([
+      bcrypt.hash(password, 10), bcrypt.hash(recoveryPin, 10), createEmployeeNumber(),
+    ]);
+    const user = await prisma.user.create({ data: { name, email, employeeNumber, passwordHash, recoveryPinHash, role: "GENERAL" } });
+    return reply.code(201).send({ id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role });
+  });
 
-      const valid = await bcrypt.compare(password, user.passwordHash);
-      if (!valid) return reply.code(401).send({ error: t("invalidCredentials", request.locale) });
+  app.post("/login", { config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } }, async (request, reply) => {
+    const parsed = loginSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
 
-      // tv 클레임으로 비밀번호 변경/로그아웃 시 기존 토큰을 무효화한다.
-      const token = app.jwt.sign(
-        { sub: user.id, role: user.role, tv: user.tokenVersion },
-        { expiresIn: JWT_EXPIRES_IN },
-      );
+    const identifier = (parsed.data.identifier ?? parsed.data.email ?? "").trim();
+    const user = await prisma.user.findFirst({ where: { OR: [{ email: identifier.toLowerCase() }, { employeeNumber: identifier.toUpperCase() }] } });
+    if (!user || !user.isActive) return reply.code(401).send({ error: t("invalidCredentials", request.locale) });
+    const valid = await bcrypt.compare(parsed.data.password, user.passwordHash);
+    if (!valid) return reply.code(401).send({ error: t("invalidCredentials", request.locale) });
 
-      // <img src>용 미디어 전용 httpOnly 쿠키. API JWT를 그대로 넣지 않고 짧은 수명·purpose 분리.
-      setMediaCookie(app, reply, user.id);
+    const purpose = user.mfaEnabled ? "mfa-login" : "mfa-setup";
+    const challengeToken = app.jwt.sign({ sub: user.id, role: user.role, tv: user.tokenVersion, purpose }, { expiresIn: "10m" });
+    return {
+      mfaRequired: true,
+      enrollmentRequired: !user.mfaEnabled,
+      challengeToken,
+      user: { id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role },
+    };
+  });
 
-      return {
-        token,
-        user: { id: user.id, name: user.name, email: user.email, role: user.role },
-      };
-    },
-  );
+  app.post("/recover/user-id", { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } }, async (request, reply) => {
+    const parsed = recoverUserIdSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+    if (!user || !user.isActive || !user.recoveryPinHash) return reply.code(401).send({ error: "We could not verify that account." });
+    const valid = await verifyRecoveryPin(user, parsed.data.recoveryPin);
+    if (!valid) return reply.code(401).send({ error: "We could not verify that account." });
+    return { employeeNumber: user.employeeNumber, email: user.email };
+  });
 
-  // 기본 로그아웃은 이 기기의 미디어 쿠키만 지운다. tokenVersion을 올리면 폰에서 로그아웃할 때
-  // 주방 태블릿까지 끊기므로, 전 기기 무효화는 /logout-all 과 비밀번호 변경에만 둔다.
-  // 트레이드오프: 기본 로그아웃 후에도 탈취된 Bearer는 최대 7일 유효하다.
+  app.post("/recover/password", { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } }, async (request, reply) => {
+    const parsed = recoverPasswordSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const identifier = parsed.data.identifier.trim();
+    const user = await prisma.user.findFirst({ where: { OR: [{ email: identifier.toLowerCase() }, { employeeNumber: identifier.toUpperCase() }] } });
+    if (!user || !user.isActive || !user.recoveryPinHash) return reply.code(401).send({ error: "We could not verify that account." });
+    const valid = await verifyRecoveryPin(user, parsed.data.recoveryPin);
+    if (!valid) return reply.code(401).send({ error: "We could not verify that account." });
+    const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+    await bumpTokenVersion(user.id);
+    return { ok: true };
+  });
+
   app.post("/logout", { preHandler: [app.authenticate] }, async (_request, reply) => {
     clearMediaCookie(reply);
     return reply.code(204).send();
@@ -87,113 +144,73 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.get("/me", { preHandler: [app.authenticate] }, async (request, reply) => {
     const user = await prisma.user.findUnique({ where: { id: request.user.sub } });
-    if (!user) return null;
-    // AuthProvider 마운트·탭 복귀(visibilitychange) 때마다 /me가 호출되므로
-    // 여기서 미디어 쿠키를 슬라이딩 갱신한다. 로그인만 심으면 24h 뒤 JWT는 살아 있는데
-    // 사진만 전부 401이 된다.
-    setMediaCookie(app, reply, user.id);
-    return { id: user.id, name: user.name, email: user.email, role: user.role };
+    if (!user || !user.isActive) return reply.code(401).send({ error: "unauthorized" });
+    return { id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, jobTitle: user.jobTitle, mfaEnabled: user.mfaEnabled };
   });
 
-  // 공개 회원가입은 없다 — 관리자만 가족 구성원 계정을 만들 수 있다.
-  app.post(
-    "/users",
-    { preHandler: [app.authenticate, app.requireAdmin] },
-    async (request, reply) => {
-      const parsed = createUserSchema.safeParse(request.body);
-      if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-
-      const { name, email, password, role } = parsed.data;
-      const passwordHash = await bcrypt.hash(password, 10);
-      const user = await prisma.user.create({ data: { name, email, passwordHash, role } });
-      return reply
-        .code(201)
-        .send({ id: user.id, name: user.name, email: user.email, role: user.role });
-    },
-  );
+  app.post("/users", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
+    const parsed = createUserSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const { name, email, password, role } = parsed.data;
+    const [passwordHash, employeeNumber] = await Promise.all([bcrypt.hash(password, 10), createEmployeeNumber()]);
+    const user = await prisma.user.create({ data: { name, email, employeeNumber, passwordHash, role } });
+    return reply.code(201).send({ id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, isActive: user.isActive });
+  });
 
   app.get("/users", { preHandler: [app.authenticate, app.requireAdmin] }, async () => {
-    const users = await prisma.user.findMany({
-      select: { id: true, name: true, email: true, role: true },
-      orderBy: { createdAt: "asc" },
-    });
-    return users;
+    return prisma.user.findMany({ select: { id: true, name: true, email: true, employeeNumber: true, role: true, jobTitle: true, isActive: true, mfaEnabled: true }, orderBy: { createdAt: "asc" } });
   });
 
-  app.delete(
-    "/users/:id",
-    { preHandler: [app.authenticate, app.requireAdmin] },
-    async (request, reply) => {
-      const { id } = request.params as { id: string };
-      if (id === request.user.sub) {
-        return reply.code(400).send({ error: t("cannotDeleteSelf", request.locale) });
-      }
-      await prisma.user.delete({ where: { id } });
-      return reply.code(204).send();
-    },
-  );
+  app.delete("/users/:id", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (id === request.user.sub) return reply.code(400).send({ error: t("cannotDeleteSelf", request.locale) });
+    const target = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+    if (!target) return reply.code(404).send({ error: t("userNotFound", request.locale) });
+    await prisma.user.update({ where: { id }, data: { isActive: false } });
+    await prisma.organizationMembership.updateMany({ where: { userId: id }, data: { isActive: false } });
+    await bumpTokenVersion(id);
+    return reply.code(204).send();
+  });
 
-  // 관리자가 타인의 비밀번호를 "재설정"할 수는 있지만 "알아낼" 수는 없다.
-  // 서버가 고른 임시값만 1회 응답하고, 기존 세션은 tokenVersion으로 끊는다.
-  app.post(
-    "/users/:id/reset-password",
-    { preHandler: [app.authenticate, app.requireAdmin] },
-    async (request, reply) => {
-      const { id } = request.params as { id: string };
-      if (id === request.user.sub) {
-        return reply.code(400).send({ error: t("cannotResetOwnPassword", request.locale) });
-      }
+  app.post("/users/:id/reset-password", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (id === request.user.sub) return reply.code(400).send({ error: t("cannotResetOwnPassword", request.locale) });
+    const target = await prisma.user.findUnique({ where: { id } });
+    if (!target) return reply.code(404).send({ error: t("userNotFound", request.locale) });
+    const temporaryPassword = randomBytes(12).toString("base64url");
+    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+    await prisma.user.update({ where: { id }, data: { passwordHash } });
+    await bumpTokenVersion(id);
+    return { id: target.id, email: target.email, name: target.name, temporaryPassword };
+  });
 
-      const target = await prisma.user.findUnique({ where: { id } });
-      if (!target) return reply.code(404).send({ error: t("userNotFound", request.locale) });
-
-      // 복원 경로와 동일한 엔트로피 — 관리자가 고른 값이 아니므로 사칭·영구공유 여지가 줄어든다.
-      const temporaryPassword = randomBytes(12).toString("base64url");
-      const passwordHash = await bcrypt.hash(temporaryPassword, 10);
-      await prisma.user.update({ where: { id }, data: { passwordHash } });
-      await bumpTokenVersion(id);
-
-      return {
-        id: target.id,
-        email: target.email,
-        name: target.name,
-        temporaryPassword,
-      };
-    },
-  );
+  app.post("/users/:id/reset-mfa", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const target = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+    if (!target) return reply.code(404).send({ error: t("userNotFound", request.locale) });
+    await prisma.user.update({ where: { id }, data: { mfaEnabled: false, mfaSecretEncrypted: null, mfaBackupCodeHashes: Prisma.DbNull } });
+    await bumpTokenVersion(id);
+    return { ok: true };
+  });
 
   app.patch("/profile", { preHandler: [app.authenticate] }, async (request, reply) => {
     const parsed = updateProfileSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-
     const userId = request.user.sub;
     const { name, email, currentPassword, newPassword } = parsed.data;
-
     const updateData: Record<string, unknown> = {};
     if (name) updateData.name = name;
     if (email) updateData.email = email;
-
     if (newPassword) {
-      if (!currentPassword) {
-        return reply.code(400).send({ error: t("currentPasswordRequired", request.locale) });
-      }
+      if (!currentPassword) return reply.code(400).send({ error: t("currentPasswordRequired", request.locale) });
       const user = await prisma.user.findUnique({ where: { id: userId } });
       if (!user) return reply.code(404).send({ error: t("userNotFound", request.locale) });
-
       const valid = await bcrypt.compare(currentPassword, user.passwordHash);
       if (!valid) return reply.code(400).send({ error: t("incorrectCurrentPassword", request.locale) });
-
       updateData.passwordHash = await bcrypt.hash(newPassword, 10);
     }
-
     const user = await prisma.user.update({ where: { id: userId }, data: updateData });
-    if (newPassword) {
-      // 비밀번호가 바뀌면 기존 토큰을 전부 무효화한다(탈취 대응). 현재 세션도 재로그인 필요.
-      await bumpTokenVersion(userId);
-      clearMediaCookie(reply);
-    } else {
-      invalidateTokenVersionCache(userId);
-    }
-    return { id: user.id, name: user.name, email: user.email, role: user.role };
+    if (newPassword) { await bumpTokenVersion(userId); clearMediaCookie(reply); } else invalidateTokenVersionCache(userId);
+    return { id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, jobTitle: user.jobTitle, mfaEnabled: user.mfaEnabled };
   });
 }

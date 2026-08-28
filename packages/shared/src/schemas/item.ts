@@ -5,7 +5,9 @@ export const itemConditionSchema = z.enum(["NEW", "IN_USE", "NEEDS_REPAIR", "RET
 
 export const itemInputSchema = z.object({
   name: z.string().min(1),
+  manufacturer: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
+  packageSize: z.string().nullable().optional(),
   quantity: z.number().int().min(0).default(1),
   unit: z.string().nullable().optional(),
   locationId: z.string().nullable().optional(),
@@ -19,6 +21,7 @@ export const itemInputSchema = z.object({
   photoUrl: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   wanted: z.boolean().optional(),
+  isActive: z.boolean().optional(),
   itemType: itemTypeSchema.default("CONSUMABLE"),
   condition: itemConditionSchema.nullable().optional(),
 });

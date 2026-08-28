@@ -1,0 +1,46 @@
+services:
+  - type: web
+    name: store-scan-api
+    runtime: docker
+    branch: chatgpt-development
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerCommand: sh -c "npx prisma migrate deploy --config apps/api/prisma.config.ts && node apps/api/dist/index.js"
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: store-scan-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: APP_PUBLIC_URL
+        sync: false
+      - key: UPCITEMDB_API_KEY
+        sync: false
+      - key: COOKIE_SECURE
+        value: "true"
+
+  - type: web
+    name: store-scan-web
+    runtime: docker
+    branch: chatgpt-development
+    dockerfilePath: ./apps/web/Dockerfile
+    envVars:
+      - key: API_INTERNAL_URL
+        fromService:
+          type: web
+          name: store-scan-api
+          property: hostport
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+
+databases:
+  - name: store-scan-db
+    plan: free
+    postgresMajorVersion: "17"

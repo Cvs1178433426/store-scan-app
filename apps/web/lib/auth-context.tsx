@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { useRouter } from "next/navigation";
 import { apiFetch, getToken, setToken, clearToken } from "./api";
 import type { User } from "./types";
+import { clearCountQueue } from "./storeCountQueue";
 
 interface AuthContextValue {
   user: User | null;
@@ -31,6 +32,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const res = await apiFetch("/api/auth/me");
       if (res.status === 401) {
+        clearCountQueue();
+        if ("serviceWorker" in navigator) {
+          navigator.serviceWorker.controller?.postMessage({ type: "CLEAR_USER_DATA" });
+        }
         clearToken();
         localStorage.removeItem(CACHED_USER_KEY);
         setUser(null);
@@ -74,6 +79,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function clearLocalSession() {
+    clearCountQueue();
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.controller?.postMessage({ type: "CLEAR_USER_DATA" });
+    }
     clearToken();
     localStorage.removeItem(CACHED_USER_KEY);
     setUser(null);

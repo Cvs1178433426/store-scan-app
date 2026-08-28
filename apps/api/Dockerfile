@@ -1,7 +1,10 @@
-FROM node:24-alpine AS base
+FROM node:22-bookworm-slim AS base
 WORKDIR /app
-# Prisma의 쿼리 엔진 바이너리가 Alpine 런타임에서 필요로 함 (없으면 libssl.so 관련 오류 발생)
-RUN apk add --no-cache openssl
+# Prisma needs OpenSSL at runtime. Use Debian's package manager here instead of Alpine's apk
+# to avoid the container-start failure seen in Railway's build environment.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 FROM base AS deps
 COPY package.json package-lock.json* ./
@@ -12,7 +15,7 @@ RUN npm install
 FROM deps AS build
 COPY . .
 RUN npm run build -w packages/shared
-# prisma generate는 DB에 접속하지 않지만 prisma.config.ts가 DATABASE_URL을 요구하므로 더미 값을 준다.
+# prisma generate does not connect to the DB, but prisma.config.ts requires DATABASE_URL.
 RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npm run prisma:generate -w apps/api
 RUN npm run build -w apps/api
 
@@ -27,4 +30,6 @@ COPY --from=build /app/apps/api/assets ./apps/api/assets
 COPY --from=build /app/apps/api/package.json ./apps/api/package.json
 RUN mkdir -p /app/uploads
 EXPOSE 8080
-CMD ["node", "apps/api/dist/index.js"]
+# Keep production schema current before accepting traffic. If a migration fails, the
+# service stays down instead of serving against an incompatible database schema.
+CMD ["sh", "-c", "cd /app/apps/api && npm run prisma:migrate:deploy && node dist/index.js"]

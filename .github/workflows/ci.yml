@@ -1,10 +1,11 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [master, chatgpt-development]
   pull_request:
-    branches: [master]
+    branches: [master, chatgpt-development]
 
 jobs:
   lint:
@@ -73,3 +74,67 @@ jobs:
 
       - name: Run Tests
         run: npm run test
+
+  database-validation:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: store_scan
+          POSTGRES_PASSWORD: store_scan
+          POSTGRES_DB: store_scan_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U store_scan -d store_scan_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: postgresql://store_scan:store_scan@localhost:5432/store_scan_ci
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        working-directory: .
+        run: npm ci
+
+      - name: Build shared workspace package used by real API routes
+        working-directory: .
+        run: npm run build -w packages/shared
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Apply all migrations to disposable PostgreSQL
+        run: npx prisma migrate deploy
+
+      - name: Confirm migration history is current
+        run: npx prisma migrate status
+
+      - name: Confirm migrated database matches schema.prisma exactly
+        run: npx prisma migrate diff --exit-code --from-config-datasource --to-schema=prisma/schema.prisma
+
+      - name: Validate commercial tenant and append-only ledger integrity
+        run: npx tsx scripts/commercialFoundationValidation.ts
+
+      - name: Validate role-based task scoping and recurrence idempotency
+        run: npx tsx scripts/taskFoundationValidation.ts
+
+      - name: Exercise atomic counting and idempotent retries on PostgreSQL
+        run: npx tsx scripts/storeCountDbValidation.ts
+
+      - name: Exercise the real Store Count HTTP route on PostgreSQL
+        run: npx tsx scripts/storeCountRouteValidation.ts
