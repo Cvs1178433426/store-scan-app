@@ -176,3 +176,103 @@ export type AuditScanResult =
       sessionLocationId: string;
       session: AuditSession;
     };
+
+
+export type TaskStatus = "OPEN" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED" | "CANCELLED";
+export type TaskPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
+export type TaskRecurrence = "ONCE" | "DAILY" | "WEEKLY" | "MONTHLY";
+export type TaskRolloverPolicy = "REMAIN_OVERDUE" | "ROLL_FORWARD" | "SKIP";
+
+export interface TaskSite {
+  id: string;
+  organizationId: string;
+  code: string;
+  name: string;
+  timeZone: string;
+}
+
+export interface TaskAssignment {
+  id: string;
+  templateId?: string | null;
+  organizationId: string;
+  siteId?: string | null;
+  assignedToId: string;
+  jobTitle?: JobTitle | null;
+  recurrence: TaskRecurrence;
+  rolloverPolicy: TaskRolloverPolicy;
+  title: string;
+  instructions?: string | null;
+  scheduledDate: string;
+  dueAt?: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  employeeNote?: string | null;
+  managerNote?: string | null;
+  completedAt?: string | null;
+  completedById?: string | null;
+  assignedTo?: Pick<User, "id" | "name" | "employeeNumber" | "jobTitle">;
+  events?: TaskAssignmentEvent[];
+}
+
+export interface TaskAssignmentEvent {
+  id: string;
+  action: string;
+  fromStatus?: TaskStatus | null;
+  toStatus?: TaskStatus | null;
+  actorUserId?: string | null;
+  createdAt: string;
+}
+
+export interface TaskTemplate {
+  id: string;
+  organizationId: string;
+  siteId?: string | null;
+  jobTitle: JobTitle;
+  title: string;
+  instructions?: string | null;
+  recurrence: TaskRecurrence;
+  startDate: string;
+  endDate?: string | null;
+  weeklyDay?: number | null;
+  monthlyDay?: number | null;
+  dueTime?: string | null;
+  priority: TaskPriority;
+  rolloverPolicy: TaskRolloverPolicy;
+  isActive: boolean;
+}
+
+export interface MyWorkResponse {
+  date: string;
+  site: TaskSite;
+  managerAccess?: boolean;
+  assignments: TaskAssignment[];
+}
+
+export interface DailySummaryResponse {
+  date: string;
+  site: TaskSite;
+  tasks: { completed: TaskAssignment[]; open: TaskAssignment[]; overdueCount: number; nextUpcoming: TaskAssignment | null };
+  counts: { sessionsCompleted: number; locationsCounted: number; uniqueProducts: number; unitsCounted: number; durationMinutes: number; sessions: Array<{ id: string; name?: string | null; startedAt: string; completedAt?: string | null }> };
+}
+
+export interface TaskEmployee extends User {
+  membershipRole: string;
+}
+
+export interface TeamWorkResponse {
+  date: string;
+  site: TaskSite;
+  assignments: TaskAssignment[];
+}
+
+export interface TaskReportResponse {
+  period: "DAILY" | "WEEKLY" | "MONTHLY";
+  anchor: string;
+  start: string;
+  end: string;
+  site: TaskSite;
+  totals: Record<string, number>;
+  employees: Array<{ userId: string; name: string; employeeNumber?: string | null; completed: number; open: number; overdue: number; total: number }>;
+  countActivity: { sessions: number; locations: number; products: number; units: number };
+  assignments: TaskAssignment[];
+}

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { ensurePilotSiteForUser } from "../lib/pilotSite.js";
 import { encodeCsvRow } from "../lib/csv.js";
+import { STARTER_TASK_CATALOG } from "../lib/taskCatalog.js";
 import { canManageTasks, dateOnly, dueAtForDate, isTemplateDue, localDateInTimeZone } from "../lib/taskSchedule.js";
 import { isScheduledBefore, reportDateRange, taskEventAction, taskSnapshotData, type ReportPeriod } from "../lib/taskWorkflow.js";
 
@@ -349,6 +350,8 @@ export async function taskRoutes(app: FastifyInstance) {
 
     await materializeWorkWindow(request.user.sub, context, scheduledDate, query.data.days);
     await applyAutomaticSkip(context, scheduledDate);
+    const dayBounds = localDayBounds(scheduledDate, context.site.timeZone);
+    if (!dayBounds) return reply.code(400).send({ error: "Site time zone is invalid." });
     const assignments = await prisma.taskAssignment.findMany({
       where: {
         assignedToId: request.user.sub,
@@ -356,13 +359,14 @@ export async function taskRoutes(app: FastifyInstance) {
         siteId: context.site.id,
         OR: [
           { scheduledDate: { lte: addUtcDays(scheduledDate, query.data.days - 1) }, status: { in: ["OPEN", "IN_PROGRESS"] } },
-          { scheduledDate, status: { in: ["COMPLETED", "SKIPPED"] } },
+          { completedAt: { gte: dayBounds.start, lt: dayBounds.endExclusive }, status: "COMPLETED" },
+          { scheduledDate, status: "SKIPPED" },
         ],
       },
       orderBy: [{ scheduledDate: "asc" }, { priority: "desc" }, { dueAt: "asc" }, { createdAt: "asc" }],
       take: 500,
     });
-    return { date: dateKey(scheduledDate), site: context.site, assignments };
+    return { date: dateKey(scheduledDate), site: context.site, managerAccess: isManager(context), assignments };
   });
 
   app.get("/me/summary", async (request, reply) => {
@@ -475,6 +479,46 @@ export async function taskRoutes(app: FastifyInstance) {
       where: { organizationId: context.site.organizationId, OR: [{ siteId: null }, { siteId: context.site.id }] },
       orderBy: [{ isActive: "desc" }, { jobTitle: "asc" }, { priority: "desc" }, { title: "asc" }],
     });
+  });
+
+  app.post("/templates/starter-library", async (request, reply) => {
+    const context = await requireManagerContext(request.user.sub, request.user.role ?? "");
+    if (!context) return reply.code(403).send({ error: "Manager access required." });
+    const startDate = localDateInTimeZone(new Date(), context.site.timeZone);
+    if (!startDate) return reply.code(400).send({ error: "Site time zone is invalid." });
+
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`starter-tasks:${context.site.organizationId}:${context.site.id}`}))`;
+      const existing = await tx.taskTemplate.findMany({
+        where: { organizationId: context.site.organizationId, siteId: context.site.id },
+        select: { jobTitle: true, recurrence: true, title: true },
+      });
+      const keys = new Set(existing.map((template) => `${template.jobTitle}|${template.recurrence}|${template.title}`));
+      const missing = STARTER_TASK_CATALOG.filter((template) => !keys.has(`${template.jobTitle}|${template.recurrence}|${template.title}`));
+      if (missing.length) {
+        await tx.taskTemplate.createMany({
+          data: missing.map((template) => ({
+            organizationId: context.site.organizationId,
+            siteId: context.site.id,
+            jobTitle: template.jobTitle,
+            title: template.title,
+            instructions: template.jobTitle === "PHARMACY_TEAM" ? "Operational work only. Do not enter patient names, prescriptions, diagnoses, dates of birth, or other protected health information." : null,
+            recurrence: template.recurrence,
+            startDate,
+            endDate: null,
+            weeklyDay: template.recurrence === "WEEKLY" ? 1 : null,
+            monthlyDay: template.recurrence === "MONTHLY" ? 1 : null,
+            dueTime: null,
+            priority: template.priority,
+            rolloverPolicy: "REMAIN_OVERDUE",
+            createdById: request.user.sub,
+            updatedById: request.user.sub,
+          })),
+        });
+      }
+      return { installed: missing.length, existing: existing.length };
+    });
+    return reply.send({ ...result, totalCatalog: STARTER_TASK_CATALOG.length });
   });
 
   app.post("/templates", async (request, reply) => {
