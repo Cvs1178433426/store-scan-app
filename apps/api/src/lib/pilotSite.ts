@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "./prisma.js";
 
-export type PilotSite = { id: string; organizationId: string; timeZone: string };
+export type PilotSite = { id: string; organizationId: string; timeZone: string; name: string; code: string };
 
 export async function ensurePilotSiteForUser(userId: string, role?: string): Promise<PilotSite | null> {
   const existing = await prisma.site.findMany({
@@ -14,7 +14,7 @@ export async function ensurePilotSiteForUser(userId: string, role?: string): Pro
     },
     take: 2,
     orderBy: [{ code: "asc" }, { id: "asc" }],
-    select: { id: true, organizationId: true, timeZone: true },
+    select: { id: true, organizationId: true, timeZone: true, name: true, code: true },
   });
   if (existing.length === 1) return existing[0];
   if (existing.length > 1) return null;
@@ -30,7 +30,7 @@ export async function ensurePilotSiteForUser(userId: string, role?: string): Pro
           where: { isActive: true },
           take: 1,
           orderBy: [{ code: "asc" }, { id: "asc" }],
-          select: { id: true, organizationId: true, timeZone: true },
+          select: { id: true, organizationId: true, timeZone: true, name: true, code: true },
         },
       },
     });
@@ -58,7 +58,7 @@ export async function ensurePilotSiteForUser(userId: string, role?: string): Pro
       },
       take: 2,
       orderBy: [{ code: "asc" }, { id: "asc" }],
-      select: { id: true, organizationId: true, timeZone: true },
+      select: { id: true, organizationId: true, timeZone: true, name: true, code: true },
     });
     if (sitesAfterLock.length === 1) return sitesAfterLock[0];
     if (sitesAfterLock.length > 1) return null;
@@ -72,8 +72,8 @@ export async function ensurePilotSiteForUser(userId: string, role?: string): Pro
     if (!membership) {
       const organization = await tx.organization.create({
         data: {
-          name: "Store Scan",
-          slug: `store-scan-${randomUUID().slice(0, 12)}`,
+          name: "Continuixai",
+          slug: `continuixai-${randomUUID().slice(0, 12)}`,
         },
         select: { id: true },
       });
@@ -91,7 +91,7 @@ export async function ensurePilotSiteForUser(userId: string, role?: string): Pro
         type: "STORE",
         countryCode: "US",
       },
-      select: { id: true, organizationId: true, timeZone: true },
+      select: { id: true, organizationId: true, timeZone: true, name: true, code: true },
     });
 
     await tx.storeLocation.updateMany({ where: { siteId: null }, data: { siteId: site.id } });
