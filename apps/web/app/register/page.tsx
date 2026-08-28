@@ -2,9 +2,7 @@
 
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { API_URL } from "../../lib/api";
-import { useAuth } from "../../lib/auth-context";
 
 const SPECIALS = "!@#$%^&*";
 
@@ -18,9 +16,24 @@ function passwordError(password: string): string | null {
   return null;
 }
 
+function responseError(error: unknown): string {
+  if (typeof error === "string" && error.trim()) return error;
+  if (!error || typeof error !== "object") return "Unable to create account.";
+
+  const details = error as { formErrors?: unknown; fieldErrors?: Record<string, unknown> };
+  const messages = [
+    ...(Array.isArray(details.formErrors) ? details.formErrors : []),
+    ...Object.values(details.fieldErrors ?? {}).flatMap((value) => Array.isArray(value) ? value : []),
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  return messages[0] ?? "Unable to create account.";
+}
+
+type CreatedAccount = {
+  employeeNumber: string;
+  email: string;
+};
+
 export default function RegisterPage() {
-  const router = useRouter();
-  const { login } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -29,6 +42,7 @@ export default function RegisterPage() {
   const [showPasswords, setShowPasswords] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [createdAccount, setCreatedAccount] = useState<CreatedAccount | null>(null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -46,33 +60,32 @@ export default function RegisterPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(typeof data.error === "string" ? data.error : "Unable to create account.");
+        setError(responseError(data.error));
         return;
       }
-
-      const loginRes = await fetch(`${API_URL}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier: email, password }),
-      });
-      if (!loginRes.ok) {
-        router.push("/login");
-        return;
-      }
-      const loginData = await loginRes.json();
-      if (loginData.challengeToken) {
-        alert(`Account created. Your Employee Number is ${data.employeeNumber}. Save it with your 6-digit Recovery PIN, then sign in to complete multi-factor authentication.`);
-        router.push("/login");
-        return;
-      }
-      await login(loginData.token);
-      alert(`Account created. Your Employee Number is ${data.employeeNumber}. Save it with your 6-digit recovery PIN.`);
-      router.push("/store-count");
+      setCreatedAccount({ employeeNumber: data.employeeNumber, email: data.email });
     } catch {
       setError("Unable to connect to Store Scan. Please try again.");
     } finally {
       setLoading(false);
     }
+  }
+
+  if (createdAccount) {
+    return (
+      <main className="container">
+        <section style={{ maxWidth: 560, margin: "32px auto", padding: 24, border: "1px solid var(--color-border)", borderRadius: 16, background: "var(--color-surface)" }}>
+          <h1>Account Created</h1>
+          <p>Your Store Scan account is ready. Save this Employee Number with your Recovery PIN.</p>
+          <div style={{ margin: "20px 0", padding: 18, borderRadius: 12, background: "var(--color-surface-hover)", textAlign: "center" }}>
+            <p style={{ margin: "0 0 6px", fontSize: 14 }}>Your Employee Number</p>
+            <strong style={{ fontSize: 24, letterSpacing: "0.04em" }}>{createdAccount.employeeNumber}</strong>
+          </div>
+          <p style={{ fontSize: 14 }}>Sign in with <strong>{createdAccount.email}</strong> or your Employee Number. You will secure the account with multi-factor authentication next.</p>
+          <Link href="/login" style={{ display: "block", marginTop: 20 }}><button type="button" style={{ width: "100%" }}>Continue to Sign In</button></Link>
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -105,7 +118,7 @@ export default function RegisterPage() {
         <input type="password" inputMode="numeric" autoComplete="off" placeholder="6-digit Recovery PIN" value={recoveryPin} onChange={(e) => setRecoveryPin(e.target.value.replace(/\D/g, "").slice(0, 6))} pattern="\d{6}" required />
         <p style={{ fontSize: 14 }}>Your Recovery PIN verifies you if you forget your Employee Number or password. Do not share it.</p>
         <button type="submit" disabled={loading}>{loading ? "Creating account..." : "Create Account"}</button>
-        {error && <p className="error-text">{error}</p>}
+        {error && <p className="error-text" role="alert" aria-live="polite">{error}</p>}
       </form>
       <p style={{ marginTop: 18 }}><Link href="/login">Already have an account? Sign in now</Link></p>
     </main>
