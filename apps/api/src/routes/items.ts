@@ -13,7 +13,7 @@ import {
   scanInputSchema,
   type QualityXpItem,
   type XpAward,
-} from "@stash/shared";
+} from "@continuixai/shared";
 import { prisma } from "../lib/prisma.js";
 import { resolveProduct } from "../lib/barcodeLookup/index.js";
 import { fireInventoryWebhook, isInventoryWebhookConfigured } from "../lib/webhook.js";

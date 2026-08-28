@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { sumQualityXp, type QualityXpItem } from "@stash/shared";
+import { sumQualityXp, type QualityXpItem } from "@continuixai/shared";
 import { prisma } from "../lib/prisma.js";
 import { getConfirmXp } from "../lib/householdXp.js";
 

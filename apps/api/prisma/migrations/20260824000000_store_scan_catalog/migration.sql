@@ -1,4 +1,4 @@
--- Dedicated Store Scan catalog + real locations.
+-- Dedicated retail count catalog + real locations.
 -- IMPORTANT: this migration must be verified against a disposable Postgres database before production use.
 
 CREATE TABLE "StoreLocation" (

@@ -45,6 +45,12 @@ describe("task scheduling", () => {
     expect(dueAtForDate(d("2026-08-28"), "16:30", "Not/AZone")).toBeNull();
   });
 
+  it("rejects nonexistent DST wall-clock due times instead of silently shifting them", () => {
+    expect(dueAtForDate(d("2026-03-08"), "01:30", "America/New_York")?.toISOString()).toBe("2026-03-08T06:30:00.000Z");
+    expect(dueAtForDate(d("2026-03-08"), "02:30", "America/New_York")).toBeNull();
+    expect(dueAtForDate(d("2026-03-08"), "03:30", "America/New_York")?.toISOString()).toBe("2026-03-08T07:30:00.000Z");
+  });
+
   it("limits task management to platform admins and organization management roles", () => {
     expect(canManageTasks("ADMIN", "VIEWER")).toBe(true);
     expect(canManageTasks("GENERAL", "OWNER")).toBe(true);

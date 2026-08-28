@@ -1,5 +1,5 @@
 {
-  "name": "@stash/shared",
+  "name": "@continuixai/shared",
   "version": "0.7.4",
   "private": true,
   "type": "module",

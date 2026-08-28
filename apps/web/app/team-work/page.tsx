@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, apiJson } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
@@ -103,6 +103,7 @@ export default function TeamWorkPage() {
   const [anchor, setAnchor] = useState(todayKey());
   const [busy, setBusy] = useState(false);
   const [accessError, setAccessError] = useState<string | null>(null);
+  const siteDateInitialized = useRef(false);
 
   useEffect(() => { if (!loading && !user) router.replace("/login"); }, [loading, user, router]);
 
@@ -120,6 +121,12 @@ export default function TeamWorkPage() {
       setTemplates(templateData);
       setTeam(teamData);
       setReport(reportData);
+      if (!siteDateInitialized.current) {
+        siteDateInitialized.current = true;
+        setOneTimeDate(teamData.date);
+        setAnchor(teamData.date);
+        setTemplateForm((current) => ({ ...current, startDate: teamData.date }));
+      }
       if (!oneTimeEmployee && employeeData.length) setOneTimeEmployee(employeeData[0].id);
       setAccessError(null);
     } catch (err) {
@@ -327,9 +334,9 @@ export default function TeamWorkPage() {
       </section>
 
       <section className="manager-section">
-        <div className="manager-section-title"><div><h2>Reports</h2><p>Daily, weekly, and monthly work plus Store Scan activity.</p></div><button type="button" onClick={() => void downloadReport()}>Export CSV</button></div>
+        <div className="manager-section-title"><div><h2>Reports</h2><p>Daily, weekly, and monthly work plus count activity.</p></div><button type="button" onClick={() => void downloadReport()}>Export CSV</button></div>
         <div className="manager-report-controls card"><label>Period<select value={period} onChange={(e) => setPeriod(e.target.value as typeof period)}><option value="DAILY">Daily</option><option value="WEEKLY">Weekly</option><option value="MONTHLY">Monthly</option></select></label><label>Anchor date<input type="date" value={anchor} onChange={(e) => setAnchor(e.target.value)} /></label></div>
-        {report && <><div className="summary-grid"><div className="summary-stat"><strong>{report.totals.assignments ?? 0}</strong><span>Assignments</span></div><div className="summary-stat"><strong>{report.totals.COMPLETED ?? 0}</strong><span>Completed</span></div><div className="summary-stat"><strong>{report.totals.OPEN ?? 0}</strong><span>Open</span></div><div className="summary-stat"><strong>{report.countActivity.sessions}</strong><span>Store Scan sessions</span></div><div className="summary-stat"><strong>{report.countActivity.locations}</strong><span>Locations</span></div><div className="summary-stat"><strong>{report.countActivity.units}</strong><span>Units</span></div></div><div className="manager-table-list">{report.employees.map((row) => <div className="card manager-row" key={row.userId}><div><strong>{row.name}</strong><div className="manager-muted">{row.employeeNumber || "No employee number"}</div></div><div className="manager-kpis"><span>{row.completed} completed</span><span>{row.open} open</span><span>{row.overdue} overdue</span></div></div>)}</div></>}
+        {report && <><div className="summary-grid"><div className="summary-stat"><strong>{report.totals.assignments ?? 0}</strong><span>Assignments</span></div><div className="summary-stat"><strong>{report.totals.COMPLETED ?? 0}</strong><span>Completed</span></div><div className="summary-stat"><strong>{report.totals.OPEN ?? 0}</strong><span>Open</span></div><div className="summary-stat"><strong>{report.countActivity.sessions}</strong><span>Count sessions</span></div><div className="summary-stat"><strong>{report.countActivity.locations}</strong><span>Locations</span></div><div className="summary-stat"><strong>{report.countActivity.units}</strong><span>Units</span></div></div><div className="manager-table-list">{report.employees.map((row) => <div className="card manager-row" key={row.userId}><div><strong>{row.name}</strong><div className="manager-muted">{row.employeeNumber || "No employee number"}</div></div><div className="manager-kpis"><span>{row.completed} completed</span><span>{row.open} open</span><span>{row.overdue} overdue</span></div></div>)}</div></>}
       </section>
     </main>
   );

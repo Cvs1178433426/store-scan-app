@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { extractPackageSize, normalizeUpcItem } from "./upcItemDb.js";
 
 describe("UPCItemDB normalization", () => {
-  it("extracts the useful Store Scan fields from a retail product", () => {
+  it("extracts the useful Continuixai Ops fields from a retail product", () => {
     const result = normalizeUpcItem({
       ean: "0049000028911",
       upc: "049000028911",

@@ -13,14 +13,14 @@ const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem("stash_the
 
 export const metadata: Metadata = {
   title: {
-    default: "Store Scan",
-    template: "%s · Store Scan",
+    default: "Continuixai Ops",
+    template: "%s · Continuixai Ops",
   },
   description: "Mobile-first barcode scanning, product identification, store counting, and inventory organization.",
-  applicationName: "Store Scan",
+  applicationName: "Continuixai Ops",
   appleWebApp: {
     capable: true,
-    title: "Store Scan",
+    title: "Continuixai Ops",
     statusBarStyle: "default",
   },
   formatDetection: {

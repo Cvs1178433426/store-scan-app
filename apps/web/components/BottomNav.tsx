@@ -15,7 +15,7 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/my-work", label: "My Work", symbol: "✓" },
-  { href: "/store-count", label: "Store Scan", symbol: "▦", primary: true },
+  { href: "/store-count", label: "Count", symbol: "▦", primary: true },
   { href: "/store-products", label: "Products", symbol: "□" },
   { href: "/store-locations", label: "Locations", symbol: "⌖" },
   { href: "/team-work", label: "Team", symbol: "◎", managerOnly: true },

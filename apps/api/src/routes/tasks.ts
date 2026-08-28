@@ -146,6 +146,25 @@ async function materializeWorkWindow(userId: string, context: TaskContext, start
   }
 }
 
+async function materializeTeamWorkWindow(context: TaskContext, startDate: Date, endDate: Date) {
+  const today = localDateInTimeZone(new Date(), context.site.timeZone);
+  if (!today) return;
+  const firstDate = startDate < today ? today : startDate;
+  if (endDate < firstDate) return;
+  const spanDays = Math.min(31, Math.floor((endDate.getTime() - firstDate.getTime()) / 86400000) + 1);
+  const memberships = await prisma.organizationMembership.findMany({
+    where: {
+      organizationId: context.site.organizationId,
+      isActive: true,
+      user: { isActive: true, jobTitle: { not: null } },
+    },
+    select: { userId: true },
+  });
+  for (const membership of memberships) {
+    await materializeWorkWindow(membership.userId, context, firstDate, spanDays);
+  }
+}
+
 async function applyAutomaticSkip(context: TaskContext, today: Date) {
   const stale = await prisma.taskAssignment.findMany({
     where: {
@@ -155,13 +174,13 @@ async function applyAutomaticSkip(context: TaskContext, today: Date) {
       rolloverPolicy: "SKIP",
       status: { in: ["OPEN", "IN_PROGRESS"] },
     },
-    select: { id: true, organizationId: true, siteId: true, status: true },
+    select: { id: true, organizationId: true, siteId: true, status: true, updatedAt: true },
     take: 500,
   });
   for (const assignment of stale) {
     await prisma.$transaction(async (tx) => {
       const changed = await tx.taskAssignment.updateMany({
-        where: { id: assignment.id, status: { in: ["OPEN", "IN_PROGRESS"] } },
+        where: { id: assignment.id, status: assignment.status, updatedAt: assignment.updatedAt },
         data: { status: "SKIPPED" },
       });
       if (changed.count === 1) {
@@ -402,15 +421,22 @@ export async function taskRoutes(app: FastifyInstance) {
     const status = parsed.data.status ?? assignment.status;
     const becomesCompleted = assignment.status !== "COMPLETED" && status === "COMPLETED";
     const noteProvided = Object.prototype.hasOwnProperty.call(parsed.data, "employeeNote");
-    return prisma.$transaction(async (tx) => {
-      const updated = await tx.taskAssignment.update({
-        where: { id },
+    const updated = await prisma.$transaction(async (tx) => {
+      const changed = await tx.taskAssignment.updateMany({
+        where: {
+          id,
+          assignedToId: request.user.sub,
+          organizationId: context.site.organizationId,
+          siteId: context.site.id,
+          updatedAt: assignment.updatedAt,
+        },
         data: {
           status,
           ...(noteProvided ? { employeeNote: parsed.data.employeeNote } : {}),
           ...(becomesCompleted ? { completedAt: new Date(), completedById: request.user.sub } : {}),
         },
       });
+      if (changed.count !== 1) return null;
       if (status !== assignment.status || noteProvided) {
         await tx.taskAssignmentEvent.create({
           data: {
@@ -424,8 +450,10 @@ export async function taskRoutes(app: FastifyInstance) {
           },
         });
       }
-      return updated;
+      return tx.taskAssignment.findUniqueOrThrow({ where: { id } });
     });
+    if (!updated) return reply.code(409).send({ error: "This task changed while you were editing it. Refresh and try again." });
+    return updated;
   });
 
   app.get("/employees", async (request, reply) => {
@@ -452,6 +480,8 @@ export async function taskRoutes(app: FastifyInstance) {
     const start = query.data.start ? dateOnly(query.data.start) : addUtcDays(today, -7);
     const end = query.data.end ? dateOnly(query.data.end) : addUtcDays(today, 7);
     if (!start || !end || end < start) return reply.code(400).send({ error: "Invalid team date range." });
+
+    await materializeTeamWorkWindow(context, start, end);
 
     const assignments = await prisma.taskAssignment.findMany({
       where: {
@@ -685,9 +715,14 @@ export async function taskRoutes(app: FastifyInstance) {
     const status = parsed.data.status ?? assignment.status;
     const managerNoteProvided = Object.prototype.hasOwnProperty.call(parsed.data, "managerNote");
     const assigneeChanged = Boolean(parsed.data.assignedToId && parsed.data.assignedToId !== assignment.assignedToId);
-    return prisma.$transaction(async (tx) => {
-      const updated = await tx.taskAssignment.update({
-        where: { id },
+    const updated = await prisma.$transaction(async (tx) => {
+      const changed = await tx.taskAssignment.updateMany({
+        where: {
+          id,
+          organizationId: context.site.organizationId,
+          siteId: context.site.id,
+          updatedAt: assignment.updatedAt,
+        },
         data: {
           status,
           ...(managerNoteProvided ? { managerNote: parsed.data.managerNote } : {}),
@@ -696,6 +731,7 @@ export async function taskRoutes(app: FastifyInstance) {
           ...(status !== "COMPLETED" && assignment.status === "COMPLETED" ? { completedAt: null, completedById: null } : {}),
         },
       });
+      if (changed.count !== 1) return null;
       if (status !== assignment.status || managerNoteProvided || assigneeChanged) {
         await tx.taskAssignmentEvent.create({
           data: {
@@ -706,11 +742,14 @@ export async function taskRoutes(app: FastifyInstance) {
             action: assigneeChanged ? "REASSIGNED" : taskEventAction(assignment.status, status),
             fromStatus: assignment.status,
             toStatus: status,
+            ...(assigneeChanged ? { fromAssignedToId: assignment.assignedToId, toAssignedToId: parsed.data.assignedToId } : {}),
           },
         });
       }
-      return updated;
+      return tx.taskAssignment.findUniqueOrThrow({ where: { id } });
     });
+    if (!updated) return reply.code(409).send({ error: "This task changed while you were editing it. Refresh and try again." });
+    return updated;
   });
 
   app.patch("/users/:id/job-title", async (request, reply) => {

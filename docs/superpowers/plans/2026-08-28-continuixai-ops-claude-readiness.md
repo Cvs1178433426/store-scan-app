@@ -24,7 +24,7 @@
 - Create: `scripts/verify-task-workflow.cjs`
 - Modify as findings require: task API/UI/schema files.
 
-- [ ] Add static checks for scoped queries, assignment snapshots, event model, manager endpoints, employee self-only endpoint, summary/report endpoints, and no product-level Store Scan branding.
+- [ ] Add static checks for scoped queries, assignment snapshots, event model, manager endpoints, employee self-only endpoint, summary/report endpoints, and no product-level legacy scan task branding.
 - [ ] Run checks and fix only demonstrated gaps.
 - [ ] Re-run until green.
 - [ ] Commit `test: add Continuixai Ops workflow integrity checks`.
@@ -46,7 +46,7 @@
 - Replace/update: `docs/CLAUDE-COMPLETE-REVIEW-BRIEF.md`
 - Create: `docs/CLAUDE-READY-HANDOFF.md`
 
-- [ ] Update terminology to Continuixai Ops and Store Scan-as-workflow.
+- [ ] Update terminology to Continuixai Ops and legacy scan task-as-workflow.
 - [ ] Require review of employee, manager, reporting, task events/snapshots, PHI warning, tenant isolation, and the unchanged counting core.
 - [ ] Record exact verification commands and results, including anything blocked by environment.
 - [ ] Produce a clean archive for Claude review.

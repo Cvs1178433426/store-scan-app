@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { storeLocationInputSchema, storeLocationUpdateSchema } from "@stash/shared";
+import { storeLocationInputSchema, storeLocationUpdateSchema } from "@continuixai/shared";
 import { prisma } from "../lib/prisma.js";
 import { isUniqueConstraintError } from "../lib/prismaErrors.js";
 import { ensurePilotSiteForUser } from "../lib/pilotSite.js";

@@ -55,7 +55,9 @@ export function groupAssignments<T extends PresentableTask>(assignments: T[], to
   for (const task of assignments) {
     const scheduled = dateKey(task.scheduledDate);
     if (task.status === "COMPLETED") {
-      if (task.completedAt && dateKey(task.completedAt) === today) completedToday.push(task);
+      // The API only returns completions inside the site-local day window.
+      // Do not reinterpret completedAt in UTC here or late local completions disappear.
+      completedToday.push(task);
       continue;
     }
     if (task.status !== "OPEN" && task.status !== "IN_PROGRESS") continue;
@@ -73,6 +75,10 @@ export function groupAssignments<T extends PresentableTask>(assignments: T[], to
 export function isStoreScanTask(task: Pick<PresentableTask, "title" | "instructions">): boolean {
   const text = `${task.title} ${task.instructions ?? ""}`.toLowerCase();
   return /\b(store\s+scan|store\s+count|inventory\s+count|cycle\s+count|recount)\b/.test(text);
+}
+
+export function countTaskActionLabel(task: Pick<PresentableTask, "title" | "instructions">): string {
+  return /\bstore\s+scan\b/i.test(task.title) ? "Start Store Scan" : "Start Count";
 }
 
 export function humanizeEnum(value: string | null | undefined): string {

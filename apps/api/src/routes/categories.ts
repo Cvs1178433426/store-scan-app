@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { categoryInputSchema } from "@stash/shared";
+import { categoryInputSchema } from "@continuixai/shared";
 import { prisma } from "../lib/prisma.js";
 
 export async function categoryRoutes(app: FastifyInstance) {

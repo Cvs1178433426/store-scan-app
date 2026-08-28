@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { normalizeOpenFoodFactsProduct } from "./openFoodFacts.js";
 
 describe("Open Food Facts normalization", () => {
-  it("maps product data into Store Scan fields", () => {
+  it("maps product data into Continuixai Ops fields", () => {
     const result = normalizeOpenFoodFactsProduct({
       product_name: "Sparkling Water",
       brands: "Example Brand",

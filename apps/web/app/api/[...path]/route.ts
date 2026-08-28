@@ -39,7 +39,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
       headers: responseHeaders,
     });
   } catch (error) {
-    console.error("Store Scan API proxy failed", error);
+    console.error("Continuixai Ops API proxy failed", error);
     return NextResponse.json({ error: "API temporarily unavailable" }, { status: 502 });
   }
 }

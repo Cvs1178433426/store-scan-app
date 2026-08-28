@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Company name is Continuixai; application name is Continuixai Ops.
-- Store Scan is only an operational workflow/task, never the application identity.
+- legacy scan task is only an operational workflow/task, never the application identity.
 - Existing Store Count counting behavior must not be refactored as part of task work.
 - Organization/site scope is derived server-side from authenticated membership.
 - Assignment snapshots and event history must not be rewritten by template edits.

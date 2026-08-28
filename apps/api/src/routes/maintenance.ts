@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { maintenanceRecordInputSchema } from "@stash/shared";
+import { maintenanceRecordInputSchema } from "@continuixai/shared";
 import { prisma } from "../lib/prisma.js";
 import { t } from "../lib/i18n.js";
 

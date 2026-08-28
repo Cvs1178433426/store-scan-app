@@ -1,9 +1,12 @@
-const CACHE_NAME = "store-scan-shell-v6";
-// Cache the core Store Scan app shell so the counting workflow can open after a prior online visit.
+const CACHE_NAME = "continuixai-ops-shell-v7";
+// Cache the core Continuixai Ops shell so work and counting can open after a prior online visit.
 // cache.addAll() fails as a group if any route is missing, so keep this list limited to real, core routes.
 const SHELL_ASSETS = [
   "/",
   "/login",
+  "/my-work",
+  "/daily-summary",
+  "/team-work",
   "/store-count",
   "/store-scan",
   "/store-products",
@@ -13,7 +16,7 @@ const SHELL_ASSETS = [
 ];
 
 // Cache only safe read-only item API responses. Never cache writes.
-const API_CACHE_NAME = "store-scan-api-v2";
+const API_CACHE_NAME = "continuixai-ops-api-v3";
 const ITEMS_API_SUBROUTE_DENYLIST = new Set(["scan", "stats", "export.csv", "import.csv", "bulk", "bulk-delete"]);
 
 function isCacheableItemsGet(request) {
@@ -87,7 +90,7 @@ self.addEventListener("fetch", (event) => {
 });
 
 self.addEventListener("push", (event) => {
-  let data = { title: "Store Scan", body: "", url: "/store-count" };
+  let data = { title: "Continuixai Ops", body: "", url: "/my-work" };
   try {
     if (event.data) data = { ...data, ...event.data.json() };
   } catch {

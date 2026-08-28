@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { currentLocalMonthRange, localMonthRange } from "@stash/shared";
+import { currentLocalMonthRange, localMonthRange } from "@continuixai/shared";
 import { apiJson } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 import { useLocale } from "../../lib/i18n/locale-context";

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { computeFreshnessRatio, freshnessPercent, locationInputSchema } from "@stash/shared";
+import { computeFreshnessRatio, freshnessPercent, locationInputSchema } from "@continuixai/shared";
 import { prisma } from "../lib/prisma.js";
 import { collectLocationIds } from "../lib/auditScope.js";
 

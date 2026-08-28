@@ -14,7 +14,7 @@
 
 - Company: Continuixai.
 - Application: Continuixai Ops.
-- Store Scan may appear only as the name of an operational task/workflow.
+- legacy scan task may appear only as the name of an operational task/workflow.
 - Employee UX is phone-first; manager UX responsive across phone/tablet/desktop.
 - Sign-out summary is informational and never silently changes task status.
 - Pharmacy task-note UI warns against entering PHI.
@@ -49,7 +49,7 @@
 **Interfaces:**
 - Consumes employee task APIs and daily summary.
 
-- [ ] Add failing source contract test for `/my-work`, `/daily-summary`, Store Scan task shortcut, note/status controls, and PHI warning.
+- [ ] Add failing source contract test for `/my-work`, `/daily-summary`, legacy scan task task shortcut, note/status controls, and PHI warning.
 - [ ] Verify RED.
 - [ ] Implement My Work and Daily Summary with loading/error/empty states and touch-friendly controls.
 - [ ] Make `/` redirect to `/my-work`.
@@ -80,10 +80,10 @@
 - Create: `scripts/verify-continuixai-branding.cjs`
 
 **Interfaces:**
-- Produces a source scan that fails if prohibited application-level branding remains outside an explicit legacy compatibility allowlist or Store Scan workflow references.
+- Produces a source scan that fails if prohibited application-level branding remains outside an explicit legacy compatibility allowlist or legacy scan task workflow references.
 
-- [ ] Write branding verifier and confirm it fails on current Store Scan application branding.
+- [ ] Write branding verifier and confirm it fails on current legacy scan task application branding.
 - [ ] Replace application-level branding with Continuixai Ops and company references with Continuixai.
-- [ ] Keep Store Scan only where it refers to the task/workflow or legacy route compatibility.
+- [ ] Keep legacy scan task only where it refers to the task/workflow or legacy route compatibility.
 - [ ] Run branding verifier to green.
 - [ ] Commit `brand: adopt Continuixai Ops product identity`.

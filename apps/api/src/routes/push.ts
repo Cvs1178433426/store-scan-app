@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { pushSubscribeSchema, pushUnsubscribeSchema } from "@stash/shared";
+import { pushSubscribeSchema, pushUnsubscribeSchema } from "@continuixai/shared";
 import { prisma } from "../lib/prisma.js";
 import { generateAndSaveVapidKeys, getVapidPublicKey, isPushConfigured, sendPushToUser } from "../lib/push.js";
 import { t } from "../lib/i18n.js";

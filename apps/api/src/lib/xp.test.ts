@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeConfirmXp, computeQualityXp, QUALITY_XP, sumQualityXp } from "@stash/shared";
+import { computeConfirmXp, computeQualityXp, QUALITY_XP, sumQualityXp } from "@continuixai/shared";
 
 describe("computeQualityXp", () => {
   it("이름만 있는 소모품은 0", () => {

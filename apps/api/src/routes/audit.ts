@@ -10,7 +10,7 @@ import {
   computeQualityXp,
   guessSymbology,
   type AuditUnscannedAction,
-} from "@stash/shared";
+} from "@continuixai/shared";
 import { prisma } from "../lib/prisma.js";
 import { collectLocationIds, computeAuditProgress } from "../lib/auditScope.js";
 import { fireInventoryWebhook } from "../lib/webhook.js";

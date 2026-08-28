@@ -704,9 +704,11 @@ model TaskAssignmentEvent {
   siteId         String?
   actorUserId    String?
   action         String
-  fromStatus     TaskStatus?
-  toStatus       TaskStatus?
-  createdAt      DateTime @default(now())
+  fromStatus       TaskStatus?
+  toStatus         TaskStatus?
+  fromAssignedToId String?
+  toAssignedToId   String?
+  createdAt        DateTime @default(now())
 
   assignment   TaskAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
   organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)

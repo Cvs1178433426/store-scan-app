@@ -10,7 +10,7 @@ import {
   recoverUserIdSchema,
   registerSchema,
   updateProfileSchema,
-} from "@stash/shared";
+} from "@continuixai/shared";
 import { prisma } from "../lib/prisma.js";
 import { t } from "../lib/i18n.js";
 import { bumpTokenVersion, invalidateTokenVersionCache } from "../lib/tokenVersion.js";

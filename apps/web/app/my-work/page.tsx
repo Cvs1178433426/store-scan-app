@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { apiJson } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 import { useToast } from "../../lib/toast-context";
-import { greetingForTimeZone, groupAssignments, humanizeEnum, isStoreScanTask } from "../../lib/taskPresentation";
+import { countTaskActionLabel, greetingForTimeZone, groupAssignments, humanizeEnum, isStoreScanTask } from "../../lib/taskPresentation";
 import type { MyWorkResponse, TaskAssignment, TaskStatus } from "../../lib/types";
 
 function formatSiteDate(date: string, timeZone: string): string {
@@ -68,7 +68,7 @@ function TaskCard({ task, today, timeZone, onUpdate }: {
         </div>
       )}
       {scanTask && !isCompleted && (
-        <Link href="/store-count" className="work-link-button">Start Store Scan</Link>
+        <Link href="/store-count" className="work-link-button">{countTaskActionLabel(task)}</Link>
       )}
       <div className="work-task-actions" aria-label={`Actions for ${task.title}`}>
         {!isCompleted && task.status === "OPEN" && <button type="button" className="secondary" disabled={saving} onClick={() => void update({ status: "IN_PROGRESS" })}>Start task</button>}
@@ -129,7 +129,7 @@ export default function MyWorkPage() {
   useEffect(() => { if (user) void refresh(); }, [user]);
 
   const grouped = useMemo(() => data ? groupAssignments(data.assignments, data.date) : null, [data]);
-  const hasStoreScan = Boolean(data?.assignments.some((task) => task.status !== "COMPLETED" && isStoreScanTask(task)));
+  const availableCountTask = data?.assignments.find((task) => task.status !== "COMPLETED" && isStoreScanTask(task)) ?? null;
 
   async function updateTask(task: TaskAssignment, patch: { status?: TaskStatus; employeeNote?: string | null }) {
     try {
@@ -159,7 +159,7 @@ export default function MyWorkPage() {
             <p>{formatSiteDate(data.date, data.site.timeZone)} · {data.site.name || data.site.code}</p>
             <div className="work-hero-actions">
               <button type="button" onClick={startDay}>Start My Day</button>
-              {hasStoreScan && <Link href="/store-count" className="work-link-button secondary-link">Start Store Scan</Link>}
+              {availableCountTask && <Link href="/store-count" className="work-link-button secondary-link">{countTaskActionLabel(availableCountTask)}</Link>}
               {data.managerAccess && <Link href="/team-work" className="work-link-button secondary-link">Team Work</Link>}
             </div>
           </>

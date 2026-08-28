@@ -45,7 +45,7 @@ export default function DailySummaryPage() {
         <>
           <section className="summary-grid" aria-label="Daily accomplishments">
             <div className="summary-stat"><strong>{summary.tasks.completed.length}</strong><span>Tasks completed</span></div>
-            <div className="summary-stat"><strong>{summary.counts.sessionsCompleted}</strong><span>Store Scan sessions</span></div>
+            <div className="summary-stat"><strong>{summary.counts.sessionsCompleted}</strong><span>Count sessions</span></div>
             <div className="summary-stat"><strong>{summary.counts.locationsCounted}</strong><span>Locations counted</span></div>
             <div className="summary-stat"><strong>{summary.counts.uniqueProducts}</strong><span>Products counted</span></div>
             <div className="summary-stat"><strong>{summary.counts.unitsCounted}</strong><span>Units counted</span></div>

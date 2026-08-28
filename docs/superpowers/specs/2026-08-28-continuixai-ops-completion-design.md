@@ -4,7 +4,7 @@
 
 - Company: **Continuixai**.
 - Application: **Continuixai Ops**.
-- `Store Scan` is not the application name. It is one operational workflow/task inside Continuixai Ops.
+- `legacy scan task` is not the application name. It is one operational workflow/task inside Continuixai Ops.
 - Existing `/store-scan` and `/store-count` route paths may remain for backward compatibility, but application titles, navigation, login/recovery copy, PWA metadata, notifications, docs, and new code must identify the product as Continuixai Ops.
 - Legacy persistence keys or protocol headers may remain where renaming would break deployed clients; they must not be presented as product branding.
 
@@ -16,7 +16,7 @@ Complete the role-based work system documented in `docs/ROLE-BASED-TASKS.md` thr
 
 ### Employee workspace
 
-The authenticated landing page becomes **My Work**. It uses site-local time for the greeting and daily boundary. It shows overdue, today, this week, and completed-today groups; priority and due time; instructions; employee notes; and task status controls. A Store Scan/Store Count shortcut appears only when relevant counting work is assigned, while the counting engine remains an independent subsystem.
+The authenticated landing page becomes **My Work**. It uses site-local time for the greeting and daily boundary. It shows overdue, today, this week, and completed-today groups; priority and due time; instructions; employee notes; and task status controls. A Count shortcut appears only when relevant counting work is assigned, while the counting engine remains an independent subsystem.
 
 ### Manager workspace
 
@@ -59,7 +59,7 @@ Pharmacy task surfaces display a warning not to enter patient names, prescriptio
 - Pure date/time/report presentation logic receives unit coverage.
 - Route tests cover self-only access, manager scope, snapshot preservation, idempotency, reopening/cancel/skip, PHI warning behavior where applicable, and summary calculations.
 - Frontend tests cover task grouping, site-local greeting, and label/route contracts.
-- Final gates: API tests, web tests, lint, production build, migration validation, tenant-integrity scripts, and a source-level scan confirming no application-level Store Scan branding remains.
+- Final gates: API tests, web tests, lint, production build, migration validation, tenant-integrity scripts, and a source-level scan confirming no application-level legacy scan task branding remains.
 - Because the present container cannot reach npm registry, unavailable dependency-backed verification is explicitly deferred until run in a network-enabled GitHub/Codex/CI environment; it must not be represented as passing.
 
 ## Claude adversarial review target

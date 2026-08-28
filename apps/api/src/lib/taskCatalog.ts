@@ -34,7 +34,7 @@ export const STARTER_TASK_CATALOG: StarterTask[] = [
   ], "HIGH"),
 
   ...roleTasks("INVENTORY_MANAGER", "DAILY", [
-    "Review open Store Scan assignments and exceptions",
+    "Review open count assignments and exceptions",
     "Check unidentified UPCs and product or location errors",
     "Review negative, zero, and unusual on-hand exceptions",
     "Coordinate recounts and inventory adjustments",
