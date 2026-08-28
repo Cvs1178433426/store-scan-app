@@ -10,13 +10,15 @@ type NavItem = {
   symbol: string;
   primary?: boolean;
   adminOnly?: boolean;
+  managerOnly?: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/store-count", label: "Count", symbol: "▦", primary: true },
-  { href: "/store-scan", label: "Add", symbol: "⌁" },
+  { href: "/my-work", label: "My Work", symbol: "✓" },
+  { href: "/store-count", label: "Store Scan", symbol: "▦", primary: true },
   { href: "/store-products", label: "Products", symbol: "□" },
   { href: "/store-locations", label: "Locations", symbol: "⌖" },
+  { href: "/team-work", label: "Team", symbol: "◎", managerOnly: true },
   { href: "/settings", label: "Settings", symbol: "⚙", adminOnly: true },
 ];
 
@@ -30,17 +32,18 @@ const PUBLIC_AUTH_ROUTES = new Set([
 
 export function BottomNav() {
   const pathname = usePathname();
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
 
   if (PUBLIC_AUTH_ROUTES.has(pathname) || pathname.startsWith("/i/")) return null;
 
-  const visibleItems = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
+  const likelyManager = isAdmin || user?.jobTitle === "STORE_MANAGER" || user?.jobTitle === "INVENTORY_MANAGER";
+  const visibleItems = NAV_ITEMS.filter((item) => (!item.adminOnly || isAdmin) && (!item.managerOnly || likelyManager));
 
   return (
-    <nav className="bottom-nav" aria-label="Store Scan navigation">
+    <nav className="bottom-nav" aria-label="Continuixai Ops navigation">
       <div className="bottom-nav-inner">
         {visibleItems.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const active = pathname === item.href || pathname.startsWith(`${item.href}/`) || (item.href === "/my-work" && pathname === "/daily-summary");
           return (
             <Link
               key={item.href}
