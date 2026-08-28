@@ -162,6 +162,7 @@ async function main() {
     if (locationId) await prisma.storeLocation.deleteMany({ where: { id: locationId } });
     if (organizationId) {
       await prisma.organizationMembership.deleteMany({ where: { organizationId } });
+      await prisma.product.deleteMany({ where: { organizationId } });
       await prisma.site.deleteMany({ where: { organizationId } });
       await prisma.organization.deleteMany({ where: { id: organizationId } });
     }
