@@ -18,9 +18,10 @@ const allowedStoreScanFiles = new Set([
   'docs/CLAUDE-READY-HANDOFF.md',
   'docs/CLAUDE-ROUND2-HANDOFF.md',
   'docs/CLAUDE-ROUND1-ADVERSARIAL-REVIEW.md',
+  'docs/CLAUDE-ROUND2-ADVERSARIAL-REVIEW.md',
   'docs/superpowers/plans/2026-08-28-claude-round1-remediation.md',
 ]);
-const historicalReviewDocs = new Set(['docs/CLAUDE-ROUND1-ADVERSARIAL-REVIEW.md']);
+const historicalReviewDocs = new Set(['docs/CLAUDE-ROUND1-ADVERSARIAL-REVIEW.md', 'docs/CLAUDE-ROUND2-ADVERSARIAL-REVIEW.md']);
 const textExt = new Set(['.ts','.tsx','.js','.cjs','.mjs','.json','.yml','.yaml','.md','.sql','.sh']);
 const violations=[];
 function check(full){
