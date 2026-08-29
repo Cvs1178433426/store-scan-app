@@ -10,7 +10,7 @@ import {
   recoverUserIdSchema,
   registerSchema,
   updateProfileSchema,
-} from "@stash/shared";
+} from "@continuixai/shared";
 import { prisma } from "../lib/prisma.js";
 import { t } from "../lib/i18n.js";
 import { bumpTokenVersion, invalidateTokenVersionCache } from "../lib/tokenVersion.js";
@@ -145,7 +145,11 @@ export async function authRoutes(app: FastifyInstance) {
   app.get("/me", { preHandler: [app.authenticate] }, async (request, reply) => {
     const user = await prisma.user.findUnique({ where: { id: request.user.sub } });
     if (!user || !user.isActive) return reply.code(401).send({ error: "unauthorized" });
-    return { id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, jobTitle: user.jobTitle, mfaEnabled: user.mfaEnabled };
+    const taskManager = user.role === "ADMIN" || Boolean(await prisma.organizationMembership.findFirst({
+      where: { userId: user.id, isActive: true, role: { in: ["OWNER", "ADMIN", "MANAGER"] } },
+      select: { id: true },
+    }));
+    return { id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, jobTitle: user.jobTitle, taskManager, mfaEnabled: user.mfaEnabled };
   });
 
   app.post("/users", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {

@@ -2,8 +2,8 @@
 // 빠른 선택 칩으로 보여준다 — 매번 드롭다운을 끝까지 훑지 않아도 되게 하기 위함.
 const MAX_RECENT = 5;
 
-export const RECENT_LOCATIONS_KEY = "stash_recent_locations";
-export const RECENT_CATEGORIES_KEY = "stash_recent_categories";
+export const RECENT_LOCATIONS_KEY = "continuixai_recent_locations";
+export const RECENT_CATEGORIES_KEY = "continuixai_recent_categories";
 
 export function loadRecentIds(key: string): string[] {
   if (typeof window === "undefined") return [];

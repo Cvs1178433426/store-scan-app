@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 
 export type Theme = "light" | "dark" | "system";
 
-const STORAGE_KEY = "stash_theme";
+const STORAGE_KEY = "continuixai_theme";
 
 interface ThemeContextValue {
   theme: Theme;

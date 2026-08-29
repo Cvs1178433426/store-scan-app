@@ -75,7 +75,7 @@ export function decryptSecret(payload: string): string {
 }
 
 export function otpauthUri(secret: string, account: string): string {
-  const issuer = "Store Scan";
+  const issuer = "Continuixai Ops";
   return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(account)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
 }
 

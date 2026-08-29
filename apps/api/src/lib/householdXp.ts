@@ -1,4 +1,4 @@
-import type { XpAward } from "@stash/shared";
+import type { XpAward } from "@continuixai/shared";
 import { prisma } from "./prisma.js";
 import { getSetting } from "./settings.js";
 

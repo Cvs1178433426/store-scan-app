@@ -1,7 +1,7 @@
 // 오프라인일 때 스캔한 바코드를 로컬에 쌓아뒀다가, 온라인으로 돌아오면 자동으로
 // 다시 보낸다 (scan/page.tsx). 여러 페이지/탭에서 공유하지 않아도 되는 단순한
 // 큐라 localStorage로 충분하다 — 이 앱의 다른 클라이언트 상태와 같은 패턴.
-const QUEUE_KEY = "stash_scan_queue";
+const QUEUE_KEY = "continuixai_count_queue";
 
 export interface QueuedScan {
   id: string;

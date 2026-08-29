@@ -133,7 +133,7 @@ export default function LoginPage() {
       if (!res.ok) { setError("Incorrect email, employee number, or password."); return; }
       await beginMfa(await res.json());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to connect to Store Scan. Please try again.");
+      setError(err instanceof Error ? err.message : "Unable to connect to Continuixai Ops. Please try again.");
     } finally { setLoading(false); }
   }
 
@@ -157,7 +157,7 @@ export default function LoginPage() {
       if (!loginRes.ok) { setError("Account created, but sign-in failed. Please sign in again."); return; }
       await beginMfa(await loginRes.json());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to connect to Store Scan. Please try again.");
+      setError(err instanceof Error ? err.message : "Unable to connect to Continuixai Ops. Please try again.");
     } finally { setLoading(false); }
   }
 
@@ -197,13 +197,13 @@ export default function LoginPage() {
     router.push("/store-count");
   }
 
-  if (checkingBootstrap) return <AuthShell><h1 style={brandStyle}>Store Scan</h1><p style={taglineStyle}>Connecting securely...</p></AuthShell>;
+  if (checkingBootstrap) return <AuthShell><h1 style={brandStyle}>Continuixai Ops</h1><p style={taglineStyle}>Connecting securely...</p></AuthShell>;
 
   if (stage === "setup") return (
     <AuthShell>
       <h1 style={brandStyle}>Secure Your Account</h1>
       <p style={helperStyle}>Open your authenticator app and scan this QR code.</p>
-      {qrDataUrl && <img src={qrDataUrl} alt="Store Scan MFA QR code" style={{ width: 220, maxWidth: "100%", background: "white", padding: 8, borderRadius: 10, display: "block", margin: "16px auto" }} />}
+      {qrDataUrl && <img src={qrDataUrl} alt="Continuixai Ops MFA QR code" style={{ width: 220, maxWidth: "100%", background: "white", padding: 8, borderRadius: 10, display: "block", margin: "16px auto" }} />}
       <p style={{ ...helperStyle, marginBottom: 6 }}><strong>Can’t scan it?</strong> Enter this setup key manually:</p>
       <code style={{ wordBreak: "break-all", fontSize: 13 }}>{manualSecret}</code>
       <form onSubmit={confirmEnrollment} className="form" style={{ marginTop: 18 }}>
@@ -238,7 +238,7 @@ export default function LoginPage() {
 
   return (
     <AuthShell>
-      <h1 style={brandStyle}>Store Scan</h1>
+      <h1 style={brandStyle}>Continuixai Ops</h1>
       <p style={taglineStyle}>Fast, accurate store inventory counting.</p>
       {needsBootstrap ? (
         <>

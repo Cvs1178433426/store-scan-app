@@ -134,7 +134,7 @@ export default function StoreProductsPage() {
     <main className="container" style={{ maxWidth: 760, paddingBottom: 44 }}>
       <header style={{ display: "flex", alignItems: "end", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
         <div>
-          <p style={{ margin: 0, opacity: 0.65, fontSize: 12, fontWeight: 800, letterSpacing: ".08em" }}>STORE SCAN</p>
+          <p style={{ margin: 0, opacity: 0.65, fontSize: 12, fontWeight: 800, letterSpacing: ".08em" }}>CONTINUIXAI OPS</p>
           <h1 style={{ margin: "3px 0 0" }}>Products</h1>
         </div>
         <button type="button" onClick={() => setAdding((value) => !value)}>{adding ? "Close" : "Add product"}</button>

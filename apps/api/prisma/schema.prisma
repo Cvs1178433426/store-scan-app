@@ -177,11 +177,13 @@ model User {
   storeCountEntriesCounted StoreCountEntry[]        @relation("StoreCountEntryCounter")
   storeCountScanLogs       StoreCountScanLog[]      @relation("StoreCountScanActor")
   organizationMemberships  OrganizationMembership[]
+  siteMemberships          SiteMembership[]
   inventoryTransactions    InventoryTransaction[]   @relation("InventoryTransactionActor")
   createdTaskTemplates     TaskTemplate[]           @relation("TaskTemplateCreatedBy")
   updatedTaskTemplates     TaskTemplate[]           @relation("TaskTemplateUpdatedBy")
   assignedTasks            TaskAssignment[]         @relation("TaskAssignedTo")
   completedTasks           TaskAssignment[]         @relation("TaskCompletedBy")
+  taskAssignmentEvents     TaskAssignmentEvent[]    @relation("TaskAssignmentEventActor")
 
   @@index([isActive])
   @@index([jobTitle, isActive])
@@ -203,6 +205,7 @@ model Organization {
   inventoryTransactions InventoryTransaction[]
   taskTemplates         TaskTemplate[]
   taskAssignments       TaskAssignment[]
+  taskAssignmentEvents   TaskAssignmentEvent[]
 
   @@index([isActive])
 }
@@ -222,6 +225,22 @@ model OrganizationMembership {
   @@unique([organizationId, userId])
   @@index([userId, isActive])
   @@index([organizationId, role, isActive])
+}
+
+model SiteMembership {
+  id        String   @id @default(cuid())
+  siteId    String
+  userId    String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, userId])
+  @@index([userId, isActive])
+  @@index([siteId, isActive])
 }
 
 model Site {
@@ -247,6 +266,8 @@ model Site {
   inventoryTransactions InventoryTransaction[]
   taskTemplates         TaskTemplate[]
   taskAssignments       TaskAssignment[]
+  taskAssignmentEvents   TaskAssignmentEvent[]
+  memberships            SiteMembership[]
 
   @@unique([organizationId, code])
   @@index([organizationId, isActive])
@@ -662,9 +683,13 @@ model TaskTemplate {
 model TaskAssignment {
   id             String       @id @default(cuid())
   templateId     String?
+  idempotencyKey String?
   organizationId String
   siteId         String?
   assignedToId   String
+  jobTitle       JobTitle?
+  recurrence     TaskRecurrence @default(ONCE)
+  rolloverPolicy TaskRolloverPolicy @default(REMAIN_OVERDUE)
   title          String
   instructions   String?
   scheduledDate  DateTime     @db.Date
@@ -683,9 +708,34 @@ model TaskAssignment {
   site         Site?         @relation(fields: [siteId], references: [id], onDelete: Cascade)
   assignedTo   User          @relation("TaskAssignedTo", fields: [assignedToId], references: [id], onDelete: Cascade)
   completedBy  User?         @relation("TaskCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  events       TaskAssignmentEvent[]
 
   @@unique([templateId, assignedToId, scheduledDate])
+  @@unique([organizationId, idempotencyKey])
   @@index([assignedToId, scheduledDate, status])
   @@index([organizationId, siteId, scheduledDate, status])
   @@index([templateId])
+}
+
+model TaskAssignmentEvent {
+  id             String   @id @default(cuid())
+  assignmentId   String
+  organizationId String
+  siteId         String?
+  actorUserId    String?
+  action         String
+  fromStatus       TaskStatus?
+  toStatus         TaskStatus?
+  fromAssignedToId String?
+  toAssignedToId   String?
+  createdAt        DateTime @default(now())
+
+  assignment   TaskAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site?          @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  actor        User?          @relation("TaskAssignmentEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([assignmentId, createdAt])
+  @@index([organizationId, siteId, createdAt])
+  @@index([actorUserId, createdAt])
 }

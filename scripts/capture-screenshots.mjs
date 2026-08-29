@@ -59,7 +59,7 @@ async function captureLocale(locale) {
   const page = await context.newPage();
 
   await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 30000 });
-  await page.evaluate((loc) => localStorage.setItem("stash_locale", loc), locale);
+  await page.evaluate((loc) => localStorage.setItem("continuixai_locale", loc), locale);
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForTimeout(600);
 
@@ -70,7 +70,7 @@ async function captureLocale(locale) {
     .waitForURL((url) => !url.pathname.includes("/login"), { timeout: 15000 })
     .catch(async () => console.log(`[${locale}] still on login:`, (await page.innerText("body")).slice(0, 160)));
 
-  await page.evaluate((loc) => localStorage.setItem("stash_locale", loc), locale);
+  await page.evaluate((loc) => localStorage.setItem("continuixai_locale", loc), locale);
 
   await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
   await shot(page, path.join(dir, "01-dashboard.png"));

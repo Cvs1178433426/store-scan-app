@@ -29,7 +29,7 @@ export default function ForgotUserIdPage() {
       }
       setEmployeeNumber(data.employeeNumber || "No Employee Number is assigned to this older account.");
     } catch {
-      setError("Unable to connect to Store Scan. Please try again.");
+      setError("Unable to connect to Continuixai Ops. Please try again.");
     } finally {
       setLoading(false);
     }

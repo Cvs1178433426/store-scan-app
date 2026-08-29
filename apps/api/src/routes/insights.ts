@@ -7,7 +7,7 @@ import {
   UNTOUCHED_DAYS_DEFAULT,
   type InsightsItem,
   type InsightsMovement,
-} from "@stash/shared";
+} from "@continuixai/shared";
 import { prisma } from "../lib/prisma.js";
 import { t } from "../lib/i18n.js";
 

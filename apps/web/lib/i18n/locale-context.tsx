@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { translations, type Locale, type TranslationKey } from "./translations";
 
-const STORAGE_KEY = "stash_locale";
+const STORAGE_KEY = "continuixai_locale";
 
 interface LocaleContextValue {
   locale: Locale;

@@ -93,7 +93,7 @@ export function OneTimeSecrets({ title, hint, secrets, downloadFilename, onClose
   }
 
   function handleDownload() {
-    const name = downloadFilename ?? `stash-one-time-secrets_${todayStamp()}.txt`;
+    const name = downloadFilename ?? `continuixai-ops-one-time-secrets_${todayStamp()}.txt`;
     downloadTextFile(name, secretsAsText());
     show(t("oneTimeSecretDownloadedToast"), "success");
   }

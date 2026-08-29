@@ -32,7 +32,7 @@ async function getVapidConfig(): Promise<{ publicKey: string; privateKey: string
   return {
     publicKey: publicKey.trim(),
     privateKey: privateKey.trim(),
-    subject: subject?.trim() || "mailto:admin@stash.local",
+    subject: subject?.trim() || "mailto:admin@continuixai.local",
   };
 }
 

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { barcodeInputSchema, guessSymbology } from "@stash/shared";
+import { barcodeInputSchema, guessSymbology } from "@continuixai/shared";
 import { prisma } from "../lib/prisma.js";
 import { buildItemDeepLink, renderLabelPng } from "../lib/qrLabel.js";
 import { isUniqueConstraintError } from "../lib/prismaErrors.js";

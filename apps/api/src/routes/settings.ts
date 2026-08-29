@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { settingUpdateSchema } from "@stash/shared";
+import { settingUpdateSchema } from "@continuixai/shared";
 import { prisma } from "../lib/prisma.js";
 import { parseEnabledProviderIds } from "../lib/barcodeLookup/index.js";
 import { getSetting } from "../lib/settings.js";

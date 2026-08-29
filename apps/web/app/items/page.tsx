@@ -11,7 +11,7 @@ import { ItemCard } from "../../components/ItemCard";
 import { downloadBlob, todayStamp } from "../../lib/download";
 import type { Item, Location, Category } from "../../lib/types";
 const PAGE_SIZE = 30;
-const FILTERS_KEY = "stash_items_filters";
+const FILTERS_KEY = "continuixai_items_filters";
 const NONE_VALUE = "__none__";
 
 interface StoredFilters {
@@ -80,14 +80,14 @@ export default function ItemsPage() {
   useEffect(() => {
     // 상세에서 삭제 실행취소 후 목록을 다시 불러온다.
     function kickRefresh() {
-      if (sessionStorage.getItem("stash_items_needs_refresh") !== "1") return;
-      sessionStorage.removeItem("stash_items_needs_refresh");
+      if (sessionStorage.getItem("continuixai_items_needs_refresh") !== "1") return;
+      sessionStorage.removeItem("continuixai_items_needs_refresh");
       setPage(1);
       setRefreshKey((k) => k + 1);
     }
     kickRefresh();
-    window.addEventListener("stash-items-refresh", kickRefresh);
-    return () => window.removeEventListener("stash-items-refresh", kickRefresh);
+    window.addEventListener("continuixai-items-refresh", kickRefresh);
+    return () => window.removeEventListener("continuixai-items-refresh", kickRefresh);
   }, []);
 
   useEffect(() => {
@@ -141,7 +141,7 @@ export default function ItemsPage() {
     try {
       const res = await apiFetch("/api/items/export.csv");
       if (!res.ok) throw new Error(t("csvExportFailFallback"));
-      await downloadBlob(res, `stash_items_${todayStamp()}.csv`);
+      await downloadBlob(res, `continuixai_ops_items_${todayStamp()}.csv`);
     } catch (err: any) {
       show(err.message, "error");
     } finally {
