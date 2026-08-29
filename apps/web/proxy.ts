@@ -5,6 +5,7 @@ const LEGACY_PATHS = [
   "/backup",
   "/categories",
   "/history",
+  "/i",
   "/insights",
   "/items",
   "/labels",

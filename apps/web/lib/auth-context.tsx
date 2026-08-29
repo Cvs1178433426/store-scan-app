@@ -50,9 +50,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (unsynced > 0 && typeof window !== "undefined") {
           window.alert(`${unsynced} Count scan${unsynced === 1 ? "" : "s"} have not synced yet. They will remain safely on this device. Sign in again to sync them.`);
         }
-        if ("serviceWorker" in navigator) {
-          navigator.serviceWorker.controller?.postMessage({ type: "CLEAR_USER_DATA" });
-        }
         clearToken();
         localStorage.removeItem(CACHED_USER_KEY);
         setUser(null);
@@ -96,9 +93,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function clearLocalSession() {
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.controller?.postMessage({ type: "CLEAR_USER_DATA" });
-    }
     clearToken();
     localStorage.removeItem(CACHED_USER_KEY);
     setUser(null);
