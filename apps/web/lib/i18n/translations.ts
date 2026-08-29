@@ -470,7 +470,7 @@ const dict = {
   appUrlEffectiveLabel: { ko: "현재 적용 값:", en: "Currently in effect:" },
   appUrlSourceSetting: { ko: "이 설정에서 지정됨", en: "set here" },
   appUrlSourceEnv: { ko: "환경변수 기본값", en: "environment variable default" },
-  appUrlPlaceholder: { ko: "예: https://stash.example.com", en: "e.g. https://stash.example.com" },
+  appUrlPlaceholder: { ko: "예: https://ops.continuixai.example.com", en: "e.g. https://ops.continuixai.example.com" },
   lookupProvidersTitle: { ko: "제품 조회 연동", en: "Product lookup providers" },
   lookupProvidersHint: {
     ko: "스캔한 바코드가 미등록 상품일 때 이름·사진을 자동으로 채워줄 외부 조회처를 고릅니다(다중 선택 가능). 체크한 순서가 아니라 아래 목록 순서대로 하나씩 시도하고, 먼저 찾은 곳의 결과를 씁니다. 키가 필요한 곳은 아래에서 별도로 등록해야 실제로 동작합니다.",
@@ -622,13 +622,13 @@ const dict = {
   },
   webhookSecretLabel: { ko: "웹훅 서명 시크릿:", en: "Webhook signing secret:" },
   webhookSecretHint: {
-    ko: "설정하면 요청에 X-Stash-Timestamp / X-Stash-Signature 헤더가 붙습니다. 미설정 시 기존처럼 서명 없이 전송됩니다.",
-    en: "When set, requests include X-Stash-Timestamp / X-Stash-Signature. If unset, payloads are sent unsigned (previous behavior).",
+    ko: "설정하면 요청에 X-Continuixai-Timestamp / X-Continuixai-Signature 헤더가 붙습니다. 미설정 시 기존처럼 서명 없이 전송됩니다.",
+    en: "When set, requests include X-Continuixai-Timestamp / X-Continuixai-Signature. If unset, payloads are sent unsigned (previous behavior).",
   },
   webhookSecretPlaceholder: { ko: "HMAC 시크릿 입력", en: "Enter HMAC secret" },
   webhookSignatureHint: {
-    ko: "수신 측 검증: HMAC-SHA256(시크릿, \"<X-Stash-Timestamp>.<원본 JSON body>\") 결과가 sha256=<hex> 형태인 X-Stash-Signature와 일치하는지 확인하세요.",
-    en: "Receiver verification: HMAC-SHA256(secret, \"<X-Stash-Timestamp>.<raw JSON body>\") must match X-Stash-Signature (sha256=<hex>).",
+    ko: "수신 측 검증: HMAC-SHA256(시크릿, \"<X-Continuixai-Timestamp>.<원본 JSON body>\") 결과가 sha256=<hex> 형태인 X-Continuixai-Signature와 일치하는지 확인하세요.",
+    en: "Receiver verification: HMAC-SHA256(secret, \"<X-Continuixai-Timestamp>.<raw JSON body>\") must match X-Continuixai-Signature (sha256=<hex>).",
   },
   languageLabel: { ko: "언어", en: "Language" },
   currencyDefaultLabel: { ko: "기본 통화", en: "Default currency" },

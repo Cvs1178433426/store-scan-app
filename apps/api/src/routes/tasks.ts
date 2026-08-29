@@ -64,6 +64,7 @@ const assignmentUpdateSchema = z.object({
 });
 
 const oneTimeAssignmentSchema = z.object({
+  idempotencyKey: z.string().trim().min(16).max(100),
   assignedToId: z.string().trim().min(1),
   title: z.string().trim().min(1).max(200),
   instructions: z.string().trim().max(2000).nullable().optional(),
@@ -213,7 +214,7 @@ async function employeeDailySummary(userId: string, context: TaskContext, date: 
   await materializeWorkWindow(userId, context, date, 7);
   await applyAutomaticSkip(context, date);
 
-  const [completedTasks, openTasks, completedSessions] = await Promise.all([
+  const [completedTasks, skippedTasks, openTasks, completedSessions] = await Promise.all([
     prisma.taskAssignment.findMany({
       where: {
         assignedToId: userId,
@@ -223,6 +224,16 @@ async function employeeDailySummary(userId: string, context: TaskContext, date: 
         completedAt: { gte: bounds.start, lt: bounds.endExclusive },
       },
       orderBy: { completedAt: "asc" },
+    }),
+    prisma.taskAssignment.findMany({
+      where: {
+        assignedToId: userId,
+        organizationId: context.site.organizationId,
+        siteId: context.site.id,
+        status: "SKIPPED",
+        scheduledDate: date,
+      },
+      orderBy: { updatedAt: "asc" },
     }),
     prisma.taskAssignment.findMany({
       where: {
@@ -275,6 +286,7 @@ async function employeeDailySummary(userId: string, context: TaskContext, date: 
     site: context.site,
     tasks: {
       completed: completedTasks,
+      skipped: skippedTasks,
       open: openTasks,
       overdueCount: overdue.length,
       nextUpcoming,
@@ -460,7 +472,7 @@ export async function taskRoutes(app: FastifyInstance) {
     const context = await requireManagerContext(request.user.sub, request.user.role ?? "");
     if (!context) return reply.code(403).send({ error: "Manager access required." });
     const memberships = await prisma.organizationMembership.findMany({
-      where: { organizationId: context.site.organizationId, isActive: true, user: { isActive: true } },
+      where: { organizationId: context.site.organizationId, isActive: true, user: { isActive: true, siteMemberships: { some: { siteId: context.site.id, isActive: true } } } },
       select: {
         role: true,
         user: { select: { id: true, name: true, email: true, employeeNumber: true, role: true, jobTitle: true, isActive: true } },
@@ -654,39 +666,67 @@ export async function taskRoutes(app: FastifyInstance) {
     if (!scheduledDate) return reply.code(400).send({ error: "Scheduled date must be YYYY-MM-DD." });
     const membership = await prisma.organizationMembership.findUnique({
       where: { organizationId_userId: { organizationId: context.site.organizationId, userId: parsed.data.assignedToId } },
-      select: { isActive: true, user: { select: { id: true, isActive: true, jobTitle: true } } },
+      select: { isActive: true, user: { select: { id: true, isActive: true, jobTitle: true, siteMemberships: { where: { siteId: context.site.id, isActive: true }, select: { id: true }, take: 1 } } } },
     });
-    if (!membership?.isActive || !membership.user.isActive) return reply.code(404).send({ error: "Active employee not found." });
+    if (!membership?.isActive || !membership.user.isActive || membership.user.siteMemberships.length === 0) return reply.code(404).send({ error: "Active employee for this site not found." });
     if (!membership.user.jobTitle) return reply.code(409).send({ error: "Assign a job title before assigning work." });
 
-    const assignment = await prisma.taskAssignment.create({
-      data: {
-        templateId: null,
-        organizationId: context.site.organizationId,
-        siteId: context.site.id,
-        assignedToId: membership.user.id,
-        jobTitle: membership.user.jobTitle,
-        recurrence: "ONCE",
-        rolloverPolicy: parsed.data.rolloverPolicy,
-        title: parsed.data.title,
-        instructions: parsed.data.instructions,
-        scheduledDate,
-        dueAt: dueAtForDate(scheduledDate, parsed.data.dueTime ?? null, context.site.timeZone),
-        priority: parsed.data.priority,
-      },
-    });
-    await prisma.taskAssignmentEvent.create({
-      data: {
-        assignmentId: assignment.id,
-        organizationId: assignment.organizationId,
-        siteId: assignment.siteId,
-        actorUserId: request.user.sub,
-        action: "CREATED",
-        fromStatus: null,
-        toStatus: assignment.status,
-      },
-    });
-    return reply.code(201).send(assignment);
+    const existingRetry = await prisma.taskAssignment.findUnique({ where: { organizationId_idempotencyKey: { organizationId: context.site.organizationId, idempotencyKey: parsed.data.idempotencyKey } } });
+    if (existingRetry) {
+      const sameRequest = existingRetry.organizationId === context.site.organizationId
+        && existingRetry.siteId === context.site.id
+        && existingRetry.assignedToId === membership.user.id
+        && existingRetry.title === parsed.data.title
+        && dateKey(existingRetry.scheduledDate) === dateKey(scheduledDate);
+      if (!sameRequest) return reply.code(409).send({ error: "Idempotency key was already used for different work." });
+      return reply.code(200).send(existingRetry);
+    }
+
+    try {
+      const assignment = await prisma.$transaction(async (tx) => {
+        const created = await tx.taskAssignment.create({
+          data: {
+            templateId: null,
+            idempotencyKey: parsed.data.idempotencyKey,
+            organizationId: context.site.organizationId,
+            siteId: context.site.id,
+            assignedToId: membership.user.id,
+            jobTitle: membership.user.jobTitle,
+            recurrence: "ONCE",
+            rolloverPolicy: parsed.data.rolloverPolicy,
+            title: parsed.data.title,
+            instructions: parsed.data.instructions,
+            scheduledDate,
+            dueAt: dueAtForDate(scheduledDate, parsed.data.dueTime ?? null, context.site.timeZone),
+            priority: parsed.data.priority,
+          },
+        });
+        await tx.taskAssignmentEvent.create({
+          data: {
+            assignmentId: created.id,
+            organizationId: created.organizationId,
+            siteId: created.siteId,
+            actorUserId: request.user.sub,
+            action: "CREATED",
+            fromStatus: null,
+            toStatus: created.status,
+          },
+        });
+        return created;
+      });
+      return reply.code(201).send(assignment);
+    } catch (error) {
+      if ((error as { code?: string })?.code !== "P2002") throw error;
+      const retried = await prisma.taskAssignment.findUnique({ where: { organizationId_idempotencyKey: { organizationId: context.site.organizationId, idempotencyKey: parsed.data.idempotencyKey } } });
+      const sameRetry = retried
+        && retried.organizationId === context.site.organizationId
+        && retried.siteId === context.site.id
+        && retried.assignedToId === membership.user.id
+        && retried.title === parsed.data.title
+        && dateKey(retried.scheduledDate) === dateKey(scheduledDate);
+      if (!sameRetry) throw error;
+      return reply.code(200).send(retried);
+    }
   });
 
   app.patch("/assignments/:id", async (request, reply) => {
@@ -705,9 +745,9 @@ export async function taskRoutes(app: FastifyInstance) {
       if (assignment.status === "COMPLETED") return reply.code(409).send({ error: "Reopen a completed task before reassigning it." });
       const target = await prisma.organizationMembership.findUnique({
         where: { organizationId_userId: { organizationId: context.site.organizationId, userId: parsed.data.assignedToId } },
-        select: { isActive: true, user: { select: { id: true, isActive: true, jobTitle: true } } },
+        select: { isActive: true, user: { select: { id: true, isActive: true, jobTitle: true, siteMemberships: { where: { siteId: context.site.id, isActive: true }, select: { id: true }, take: 1 } } } },
       });
-      if (!target?.isActive || !target.user.isActive) return reply.code(404).send({ error: "Active employee not found." });
+      if (!target?.isActive || !target.user.isActive || target.user.siteMemberships.length === 0) return reply.code(404).send({ error: "Active employee for this site not found." });
       if (!target.user.jobTitle) return reply.code(409).send({ error: "Assign a job title before assigning work." });
       assigneeJobTitle = target.user.jobTitle;
     }
@@ -762,7 +802,7 @@ export async function taskRoutes(app: FastifyInstance) {
       where: { organizationId_userId: { organizationId: context.site.organizationId, userId: id } },
       select: { user: { select: { id: true, isActive: true } }, isActive: true },
     });
-    if (!target?.isActive || !target.user.isActive) return reply.code(404).send({ error: "Active employee not found." });
+    if (!target?.isActive || !target.user.isActive || target.user.siteMemberships.length === 0) return reply.code(404).send({ error: "Active employee for this site not found." });
     return prisma.user.update({
       where: { id },
       data: { jobTitle: parsed.data.jobTitle },

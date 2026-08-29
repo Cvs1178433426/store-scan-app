@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { useRouter } from "next/navigation";
 import { apiFetch, getToken, setToken, clearToken } from "./api";
 import type { User } from "./types";
-import { clearCountQueue } from "./storeCountQueue";
+import { getCountQueue } from "./storeCountQueue";
 
 interface AuthContextValue {
   user: User | null;
@@ -16,12 +16,26 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-const CACHED_USER_KEY = "stash_cached_user";
+const CACHED_USER_KEY = "continuixai_cached_user";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+
+  function unsyncedCountForCurrentIdentity(): number {
+    let ownerUserId = user?.id ?? null;
+    if (!ownerUserId && typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem(CACHED_USER_KEY);
+        ownerUserId = cached ? (JSON.parse(cached) as Partial<User>).id ?? null : null;
+      } catch {
+        ownerUserId = null;
+      }
+    }
+    if (!ownerUserId) return 0;
+    return getCountQueue().filter((entry) => entry.ownerUserId === ownerUserId).length;
+  }
 
   async function fetchMe() {
     if (!getToken()) {
@@ -32,7 +46,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const res = await apiFetch("/api/auth/me");
       if (res.status === 401) {
-        clearCountQueue();
+        const unsynced = unsyncedCountForCurrentIdentity();
+        if (unsynced > 0 && typeof window !== "undefined") {
+          window.alert(`${unsynced} Count scan${unsynced === 1 ? "" : "s"} have not synced yet. They will remain safely on this device. Sign in again to sync them.`);
+        }
         if ("serviceWorker" in navigator) {
           navigator.serviceWorker.controller?.postMessage({ type: "CLEAR_USER_DATA" });
         }
@@ -79,7 +96,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function clearLocalSession() {
-    clearCountQueue();
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.controller?.postMessage({ type: "CLEAR_USER_DATA" });
     }
@@ -90,6 +106,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function logout() {
+    const unsynced = unsyncedCountForCurrentIdentity();
+    if (unsynced > 0 && typeof window !== "undefined") {
+      const proceed = window.confirm(`${unsynced} Count scan${unsynced === 1 ? "" : "s"} have not synced yet. They will remain on this device after sign-out. Sign out anyway?`);
+      if (!proceed) return;
+    }
     // 이 기기만 — 서버는 미디어 쿠키만 지우고 다른 기기 JWT는 유지한다.
     try {
       if (getToken()) {
@@ -102,6 +123,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function logoutAll() {
+    const unsynced = unsyncedCountForCurrentIdentity();
+    if (unsynced > 0 && typeof window !== "undefined") {
+      const proceed = window.confirm(`${unsynced} Count scan${unsynced === 1 ? "" : "s"} have not synced yet. They will remain on this device after sign-out. Sign out on all devices anyway?`);
+      if (!proceed) return;
+    }
     // 전 기기 — tokenVersion++. 비밀번호 변경과 같은 강도.
     try {
       if (getToken()) {

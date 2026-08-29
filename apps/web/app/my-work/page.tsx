@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { apiJson } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 import { useToast } from "../../lib/toast-context";
-import { countTaskActionLabel, greetingForTimeZone, groupAssignments, humanizeEnum, isStoreScanTask } from "../../lib/taskPresentation";
+import { countTaskActionLabel, greetingForTimeZone, groupAssignments, humanizeEnum, isCountTask } from "../../lib/taskPresentation";
 import type { MyWorkResponse, TaskAssignment, TaskStatus } from "../../lib/types";
 
 function formatSiteDate(date: string, timeZone: string): string {
@@ -43,9 +43,10 @@ function TaskCard({ task, today, timeZone, onUpdate }: {
   useEffect(() => setNote(task.employeeNote ?? ""), [task.employeeNote]);
   const due = formatDue(task.dueAt, timeZone);
   const isCompleted = task.status === "COMPLETED";
+  const isSkipped = task.status === "SKIPPED";
   const isPharmacy = task.jobTitle === "PHARMACY_TEAM";
   const isOverdue = task.status !== "COMPLETED" && task.scheduledDate.slice(0, 10) < today;
-  const scanTask = isStoreScanTask(task);
+  const scanTask = isCountTask(task);
 
   async function update(patch: { status?: TaskStatus; employeeNote?: string | null }) {
     setSaving(true);
@@ -71,17 +72,20 @@ function TaskCard({ task, today, timeZone, onUpdate }: {
         <Link href="/store-count" className="work-link-button">{countTaskActionLabel(task)}</Link>
       )}
       <div className="work-task-actions" aria-label={`Actions for ${task.title}`}>
-        {!isCompleted && task.status === "OPEN" && <button type="button" className="secondary" disabled={saving} onClick={() => void update({ status: "IN_PROGRESS" })}>Start task</button>}
-        {!isCompleted && <button type="button" disabled={saving} onClick={() => void update({ status: "COMPLETED" })}>Complete</button>}
+        {isSkipped && <span className="work-complete-badge">Skipped</span>}
+        {!isCompleted && !isSkipped && task.status === "OPEN" && <button type="button" className="secondary" disabled={saving} onClick={() => void update({ status: "IN_PROGRESS" })}>Start task</button>}
+        {!isCompleted && !isSkipped && <button type="button" disabled={saving} onClick={() => void update({ status: "COMPLETED" })}>Complete</button>}
         {isCompleted && <span className="work-complete-badge">Completed</span>}
       </div>
-      <label className="work-note-label">
-        Employee note
-        <textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={2000} rows={2} placeholder="Optional operational note" />
-      </label>
-      <button type="button" className="secondary" disabled={saving || note === (task.employeeNote ?? "")} onClick={() => void update({ employeeNote: note.trim() || null })}>
-        {saving ? "Saving…" : "Save note"}
-      </button>
+      {!isSkipped && <>
+        <label className="work-note-label">
+          Employee note
+          <textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={2000} rows={2} placeholder="Optional operational note" />
+        </label>
+        <button type="button" className="secondary" disabled={saving || note === (task.employeeNote ?? "")} onClick={() => void update({ employeeNote: note.trim() || null })}>
+          {saving ? "Saving…" : "Save note"}
+        </button>
+      </>}
     </article>
   );
 }
@@ -129,7 +133,7 @@ export default function MyWorkPage() {
   useEffect(() => { if (user) void refresh(); }, [user]);
 
   const grouped = useMemo(() => data ? groupAssignments(data.assignments, data.date) : null, [data]);
-  const availableCountTask = data?.assignments.find((task) => task.status !== "COMPLETED" && isStoreScanTask(task)) ?? null;
+  const availableCountTask = data?.assignments.find((task) => task.status !== "COMPLETED" && isCountTask(task)) ?? null;
 
   async function updateTask(task: TaskAssignment, patch: { status?: TaskStatus; employeeNote?: string | null }) {
     try {
@@ -175,6 +179,7 @@ export default function MyWorkPage() {
           <WorkSection title="Today" tasks={grouped.today} empty="No work is due today." today={data.date} timeZone={data.site.timeZone} onUpdate={updateTask} />
           <WorkSection title="This week" tasks={grouped.thisWeek} empty="Nothing else is scheduled in the next seven days." today={data.date} timeZone={data.site.timeZone} onUpdate={updateTask} />
           <WorkSection title="Completed today" tasks={grouped.completedToday} empty="Completed tasks will appear here." today={data.date} timeZone={data.site.timeZone} onUpdate={updateTask} />
+          <WorkSection title="Skipped today" tasks={grouped.skippedToday} empty="No work was skipped today." today={data.date} timeZone={data.site.timeZone} onUpdate={updateTask} />
           <div className="work-footer-actions">
             <Link href="/daily-summary" className="work-link-button">Review today & sign out</Link>
             <button type="button" className="secondary" disabled={refreshing} onClick={() => void refresh()}>{refreshing ? "Refreshing…" : "Refresh"}</button>

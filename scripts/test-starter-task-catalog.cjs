@@ -1,5 +1,5 @@
 const fs=require('node:fs'); const path=require('node:path'); const vm=require('node:vm'); const assert=require('node:assert/strict');
-const ts=require('/opt/nvm/versions/node/v22.16.0/lib/node_modules/typescript');
+const ts=require('typescript');
 const p=path.resolve('apps/api/src/lib/taskCatalog.ts');
 if(!fs.existsSync(p)) throw new Error('taskCatalog.ts does not exist yet');
 const out=ts.transpileModule(fs.readFileSync(p,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;

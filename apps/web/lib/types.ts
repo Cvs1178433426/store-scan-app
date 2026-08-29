@@ -195,6 +195,7 @@ export interface TaskSite {
 export interface TaskAssignment {
   id: string;
   templateId?: string | null;
+  idempotencyKey?: string | null;
   organizationId: string;
   siteId?: string | null;
   assignedToId: string;
@@ -252,7 +253,7 @@ export interface MyWorkResponse {
 export interface DailySummaryResponse {
   date: string;
   site: TaskSite;
-  tasks: { completed: TaskAssignment[]; open: TaskAssignment[]; overdueCount: number; nextUpcoming: TaskAssignment | null };
+  tasks: { completed: TaskAssignment[]; skipped: TaskAssignment[]; open: TaskAssignment[]; overdueCount: number; nextUpcoming: TaskAssignment | null };
   counts: { sessionsCompleted: number; locationsCounted: number; uniqueProducts: number; unitsCounted: number; durationMinutes: number; sessions: Array<{ id: string; name?: string | null; startedAt: string; completedAt?: string | null }> };
 }
 

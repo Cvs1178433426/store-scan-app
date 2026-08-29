@@ -82,18 +82,18 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: store_scan
-          POSTGRES_PASSWORD: store_scan
-          POSTGRES_DB: store_scan_ci
+          POSTGRES_USER: continuixai_ops
+          POSTGRES_PASSWORD: continuixai_ops
+          POSTGRES_DB: continuixai_ops_ci
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U store_scan -d store_scan_ci"
+          --health-cmd="pg_isready -U continuixai_ops -d continuixai_ops_ci"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
     env:
-      DATABASE_URL: postgresql://store_scan:store_scan@localhost:5432/store_scan_ci
+      DATABASE_URL: postgresql://continuixai_ops:continuixai_ops@localhost:5432/continuixai_ops_ci
     defaults:
       run:
         working-directory: apps/api

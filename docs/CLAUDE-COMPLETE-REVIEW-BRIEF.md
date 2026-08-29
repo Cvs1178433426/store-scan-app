@@ -215,3 +215,9 @@ Return:
 10. **Exact conditions required before pilot**.
 
 Do not give a GO because the code “looks good.” Require evidence.
+
+## Round 2 remediation-specific attacks
+
+Round 1 found deployment failures, one-time assignment retry duplication, unsynced Count loss on auth invalidation, inherited non-pilot routes, site-isolation fragility, skipped-task invisibility, UTC manager date seeding, missing reassignment UI, nonportable verification scripts, and a manager-nav heuristic. The current archive claims to address those findings. Re-test each claim from first principles; do not accept source-contract scripts as substitutes for HTTP/DB/browser evidence.
+
+The supported pilot surface is auth/MFA, My Work, Team Work, Daily Summary/reporting, Products, Store Locations, Count, and basic account settings. Non-pilot inherited routes must be unreachable with the default environment. If enabling `ENABLE_LEGACY_INVENTORY_FEATURES=true` changes that, treat those features as explicitly out of pilot scope rather than silently approved.

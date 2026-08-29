@@ -58,6 +58,11 @@ export default function DailySummaryPage() {
           </section>
 
           <section className="work-section">
+            <div className="work-section-heading"><h2>Skipped today</h2><span>{summary.tasks.skipped.length}</span></div>
+            {summary.tasks.skipped.length === 0 ? <p className="work-empty">No work was skipped today.</p> : summary.tasks.skipped.map((task) => <div className="work-summary-row" key={task.id}><strong>{task.title}</strong><span>Skipped</span></div>)}
+          </section>
+
+          <section className="work-section">
             <div className="work-section-heading"><h2>Still open</h2><span>{summary.tasks.open.length}</span></div>
             {summary.tasks.open.length === 0 ? <p className="work-empty">No open work.</p> : summary.tasks.open.slice(0, 12).map((task) => <div className="work-summary-row" key={task.id}><strong>{task.title}</strong><span>{task.status === "IN_PROGRESS" ? "In progress" : "Open"}</span></div>)}
             {summary.tasks.overdueCount > 0 && <p className="work-overdue-note">{summary.tasks.overdueCount} overdue task{summary.tasks.overdueCount === 1 ? "" : "s"} remain open. Signing out will not mark them complete.</p>}

@@ -36,7 +36,7 @@ export async function labelRoutes(app: FastifyInstance) {
     const pdf = await renderLabelSheetPdf(entries);
     reply
       .type("application/pdf")
-      .header("Content-Disposition", `attachment; filename="stash-labels-${Date.now()}.pdf"`)
+      .header("Content-Disposition", `attachment; filename="continuixai-ops-labels-${Date.now()}.pdf"`)
       .send(pdf);
   });
 }

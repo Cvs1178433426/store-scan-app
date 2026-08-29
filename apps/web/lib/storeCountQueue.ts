@@ -1,9 +1,11 @@
-const QUEUE_KEY = "store_scan_count_queue";
+const QUEUE_KEY = "continuixai_count_queue";
+const LEGACY_QUEUE_KEY = ["store", "scan", "count", "queue"].join("_");
 
 export type QueuedCountScanStatus = "pending" | "failed";
 
 export interface QueuedCountScan {
   id: string;
+  ownerUserId: string;
   sessionId: string;
   locationId: string;
   barcodeValue: string;
@@ -35,15 +37,17 @@ function normalizeQueuedScan(value: unknown): QueuedCountScan | null {
     typeof row.queuedAt !== "number"
   ) return null;
 
+  const hasOwner = typeof row.ownerUserId === "string" && row.ownerUserId.length > 0;
   return {
     id: row.id,
+    ownerUserId: hasOwner ? row.ownerUserId as string : "unattributed",
     sessionId: row.sessionId,
     locationId: row.locationId,
     barcodeValue: row.barcodeValue,
     quantityDelta: row.quantityDelta,
     queuedAt: row.queuedAt,
-    status: row.status === "failed" ? "failed" : "pending",
-    failureReason: typeof row.failureReason === "string" ? row.failureReason : undefined,
+    status: !hasOwner || row.status === "failed" ? "failed" : "pending",
+    failureReason: !hasOwner ? "Queued before user attribution was available; manual reconciliation required." : (typeof row.failureReason === "string" ? row.failureReason : undefined),
     failedAt: typeof row.failedAt === "number" ? row.failedAt : undefined,
   };
 }
@@ -51,7 +55,15 @@ function normalizeQueuedScan(value: unknown): QueuedCountScan | null {
 export function getCountQueue(): QueuedCountScan[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(QUEUE_KEY);
+    let raw = localStorage.getItem(QUEUE_KEY);
+    if (!raw) {
+      const legacyRaw = localStorage.getItem(LEGACY_QUEUE_KEY);
+      if (legacyRaw) {
+        localStorage.setItem(QUEUE_KEY, legacyRaw);
+        localStorage.removeItem(LEGACY_QUEUE_KEY);
+        raw = legacyRaw;
+      }
+    }
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -61,12 +73,12 @@ export function getCountQueue(): QueuedCountScan[] {
   }
 }
 
-export function getPendingCountQueue(): QueuedCountScan[] {
-  return getCountQueue().filter((entry) => entry.status === "pending");
+export function getPendingCountQueue(ownerUserId?: string): QueuedCountScan[] {
+  return getCountQueue().filter((entry) => entry.status === "pending" && (!ownerUserId || entry.ownerUserId === ownerUserId));
 }
 
-export function getFailedCountQueue(): QueuedCountScan[] {
-  return getCountQueue().filter((entry) => entry.status === "failed");
+export function getFailedCountQueue(ownerUserId?: string): QueuedCountScan[] {
+  return getCountQueue().filter((entry) => entry.status === "failed" && (!ownerUserId || entry.ownerUserId === ownerUserId));
 }
 
 function saveCountQueue(queue: QueuedCountScan[]): void {
@@ -74,7 +86,7 @@ function saveCountQueue(queue: QueuedCountScan[]): void {
   localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
 }
 
-/** Purge employee-attributed work before another user can sign in on this device. */
+/** Explicit destructive purge for administrative/reset flows only. Normal logout preserves unsynced work. */
 export function clearCountQueue(): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem(QUEUE_KEY);
@@ -111,6 +123,6 @@ export function removeFromCountQueue(id: string): void {
   saveCountQueue(getCountQueue().filter((entry) => entry.id !== id));
 }
 
-export function clearCountQueueForSession(sessionId: string): void {
-  saveCountQueue(getCountQueue().filter((entry) => entry.sessionId !== sessionId));
+export function clearCountQueueForSession(sessionId: string, ownerUserId?: string): void {
+  saveCountQueue(getCountQueue().filter((entry) => entry.sessionId !== sessionId || (ownerUserId && entry.ownerUserId !== ownerUserId)));
 }

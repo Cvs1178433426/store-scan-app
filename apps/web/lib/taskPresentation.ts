@@ -49,6 +49,7 @@ export function groupAssignments<T extends PresentableTask>(assignments: T[], to
   const current: T[] = [];
   const thisWeek: T[] = [];
   const completedToday: T[] = [];
+  const skippedToday: T[] = [];
   const todayDate = new Date(`${today}T00:00:00.000Z`);
   const weekEnd = new Date(Date.UTC(todayDate.getUTCFullYear(), todayDate.getUTCMonth(), todayDate.getUTCDate() + 6)).toISOString().slice(0, 10);
 
@@ -60,6 +61,10 @@ export function groupAssignments<T extends PresentableTask>(assignments: T[], to
       completedToday.push(task);
       continue;
     }
+    if (task.status === "SKIPPED") {
+      skippedToday.push(task);
+      continue;
+    }
     if (task.status !== "OPEN" && task.status !== "IN_PROGRESS") continue;
     if (scheduled < today) overdue.push(task);
     else if (scheduled === today) current.push(task);
@@ -69,16 +74,17 @@ export function groupAssignments<T extends PresentableTask>(assignments: T[], to
   current.sort(taskSort);
   thisWeek.sort((a, b) => dateKey(a.scheduledDate).localeCompare(dateKey(b.scheduledDate)) || taskSort(a, b));
   completedToday.sort((a, b) => (a.completedAt ?? "").localeCompare(b.completedAt ?? ""));
-  return { overdue, today: current, thisWeek, completedToday };
+  skippedToday.sort(taskSort);
+  return { overdue, today: current, thisWeek, completedToday, skippedToday };
 }
 
-export function isStoreScanTask(task: Pick<PresentableTask, "title" | "instructions">): boolean {
+export function isCountTask(task: Pick<PresentableTask, "title" | "instructions">): boolean {
   const text = `${task.title} ${task.instructions ?? ""}`.toLowerCase();
   return /\b(store\s+scan|store\s+count|inventory\s+count|cycle\s+count|recount)\b/.test(text);
 }
 
-export function countTaskActionLabel(task: Pick<PresentableTask, "title" | "instructions">): string {
-  return /\bstore\s+scan\b/i.test(task.title) ? "Start Store Scan" : "Start Count";
+export function countTaskActionLabel(_task: Pick<PresentableTask, "title" | "instructions">): string {
+  return "Start Count";
 }
 
 export function humanizeEnum(value: string | null | undefined): string {

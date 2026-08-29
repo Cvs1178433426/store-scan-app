@@ -36,7 +36,7 @@ export function BottomNav() {
 
   if (PUBLIC_AUTH_ROUTES.has(pathname) || pathname.startsWith("/i/")) return null;
 
-  const likelyManager = isAdmin || user?.taskManager || user?.jobTitle === "STORE_MANAGER" || user?.jobTitle === "INVENTORY_MANAGER";
+  const likelyManager = isAdmin || user?.taskManager === true;
   const visibleItems = NAV_ITEMS.filter((item) => (!item.adminOnly || isAdmin) && (!item.managerOnly || likelyManager));
 
   return (

@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
-const ts = require('/opt/nvm/versions/node/v22.16.0/lib/node_modules/typescript');
+const ts = require('typescript');
 
 const sourcePath = path.resolve(__dirname, '../apps/api/src/lib/taskWorkflow.ts');
 if (!fs.existsSync(sourcePath)) throw new Error('taskWorkflow.ts does not exist yet');

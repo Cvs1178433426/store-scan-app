@@ -6,8 +6,8 @@ function resolveApiUrl(): string {
 
 export const API_URL = resolveApiUrl();
 
-const TOKEN_KEY = "stash_token";
-const LOCALE_KEY = "stash_locale";
+const TOKEN_KEY = "continuixai_token";
+const LOCALE_KEY = "continuixai_locale";
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;

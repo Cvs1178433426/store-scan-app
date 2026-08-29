@@ -136,7 +136,7 @@ export async function backupRoutes(app: FastifyInstance) {
         .header("Content-Type", "application/gzip")
         .header(
           "Content-Disposition",
-          `attachment; filename="stash_backup_${new Date().toISOString().slice(0, 10)}.tar.gz"`,
+          `attachment; filename="continuixai_ops_backup_${new Date().toISOString().slice(0, 10)}.tar.gz"`,
         )
         .send(stream);
     } catch (err: any) {

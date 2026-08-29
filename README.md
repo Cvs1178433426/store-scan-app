@@ -76,7 +76,7 @@ Additional source-level gates used for the Continuixai Ops completion work live 
 
 Production deployments require strong, independent `JWT_SECRET` and `MFA_ENCRYPTION_KEY` values. MFA uses the issuer **Continuixai Ops**. Do not commit credentials, database passwords, JWT secrets, MFA keys, or third-party API tokens.
 
-Some inherited compatibility identifiers (for example old webhook header names, local-storage keys, migration names, or route paths) may remain intentionally so upgrades do not strand existing sessions/offline data or break integrations. They are compatibility contracts, not product branding.
+Historical database migration directory names are retained because renaming applied migrations is unsafe. Runtime identifiers, deployment configuration, storage keys, and user-facing branding use Continuixai Ops naming.
 
 ## Review status
 

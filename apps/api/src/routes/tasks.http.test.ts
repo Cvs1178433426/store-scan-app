@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   ensurePilotSiteForUser: vi.fn(),
   membershipFindUnique: vi.fn(),
+  membershipFindMany: vi.fn(),
   assignmentFindFirst: vi.fn(),
+  assignmentFindUnique: vi.fn(),
+  assignmentCreate: vi.fn(),
   assignmentUpdateMany: vi.fn(),
   assignmentFindUniqueOrThrow: vi.fn(),
   eventCreate: vi.fn(),
@@ -17,9 +20,11 @@ vi.mock("../lib/pilotSite.js", () => ({
 
 vi.mock("../lib/prisma.js", () => ({
   prisma: {
-    organizationMembership: { findUnique: mocks.membershipFindUnique },
+    organizationMembership: { findUnique: mocks.membershipFindUnique, findMany: mocks.membershipFindMany },
     taskAssignment: {
       findFirst: mocks.assignmentFindFirst,
+      findUnique: mocks.assignmentFindUnique,
+      create: mocks.assignmentCreate,
       updateMany: mocks.assignmentUpdateMany,
       findUniqueOrThrow: mocks.assignmentFindUniqueOrThrow,
     },
@@ -52,6 +57,7 @@ describe("task route tenant and concurrency guards", () => {
     mocks.membershipFindUnique.mockResolvedValue({ role: "MEMBER", isActive: true });
     mocks.transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn({
       taskAssignment: {
+        create: mocks.assignmentCreate,
         updateMany: mocks.assignmentUpdateMany,
         findUniqueOrThrow: mocks.assignmentFindUniqueOrThrow,
       },
@@ -113,4 +119,72 @@ describe("task route tenant and concurrency guards", () => {
     });
     await app.close();
   });
+
+  it("deduplicates a retried one-time assignment by idempotency key", async () => {
+    const created = {
+      id: "task-once",
+      idempotencyKey: "retry-key-1234567890",
+      templateId: null,
+      organizationId: "org-a",
+      siteId: "site-a",
+      assignedToId: "employee-1",
+      jobTitle: "STOCK_COUNT_ASSOCIATE",
+      recurrence: "ONCE",
+      rolloverPolicy: "REMAIN_OVERDUE",
+      title: "Check endcap",
+      instructions: null,
+      scheduledDate: new Date("2026-08-28T00:00:00.000Z"),
+      dueAt: null,
+      status: "OPEN",
+      priority: "NORMAL",
+    };
+    const managerMembership = { role: "MANAGER", isActive: true };
+    const employeeMembership = {
+      isActive: true,
+      user: { id: "employee-1", isActive: true, jobTitle: "STOCK_COUNT_ASSOCIATE", siteMemberships: [{ id: "sm-1" }] },
+    };
+    mocks.assignmentCreate.mockResolvedValue(created);
+    mocks.assignmentFindUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(created);
+    mocks.membershipFindUnique
+      .mockResolvedValueOnce(managerMembership)
+      .mockResolvedValueOnce(employeeMembership)
+      .mockResolvedValueOnce(managerMembership)
+      .mockResolvedValueOnce(employeeMembership);
+
+    const app = await testApp();
+    const payload = {
+      idempotencyKey: "retry-key-1234567890",
+      assignedToId: "employee-1",
+      title: "Check endcap",
+      scheduledDate: "2026-08-28",
+      priority: "NORMAL",
+      rolloverPolicy: "REMAIN_OVERDUE",
+    };
+    const first = await app.inject({ method: "POST", url: "/api/tasks/assignments", payload });
+    const retry = await app.inject({ method: "POST", url: "/api/tasks/assignments", payload });
+
+    expect(first.statusCode).toBe(201);
+    expect(retry.statusCode).toBe(200);
+    expect(mocks.assignmentCreate).toHaveBeenCalledTimes(1);
+    expect(mocks.eventCreate).toHaveBeenCalledTimes(1);
+    await app.close();
+  });
+
+  it("filters manager employee listings to active members of the current site", async () => {
+    mocks.membershipFindUnique.mockResolvedValue({ role: "MANAGER", isActive: true });
+    mocks.membershipFindMany.mockResolvedValue([]);
+    const app = await testApp();
+    const response = await app.inject({ method: "GET", url: "/api/tasks/employees" });
+    expect(response.statusCode).toBe(200);
+    expect(mocks.membershipFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        organizationId: "org-a",
+        user: expect.objectContaining({
+          siteMemberships: { some: { siteId: "site-a", isActive: true } },
+        }),
+      }),
+    }));
+    await app.close();
+  });
+
 });

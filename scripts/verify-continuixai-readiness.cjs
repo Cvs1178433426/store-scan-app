@@ -24,6 +24,9 @@ includes('apps/api/prisma/schema.prisma', [
   'model TaskAssignmentEvent {',
   'fromAssignedToId String?',
   'toAssignedToId   String?',
+  'idempotencyKey String?',
+  '@@unique([organizationId, idempotencyKey])',
+  'model SiteMembership {',
 ]);
 includes('apps/api/prisma/migrations/20260905000000_task_workflow_completion/migration.sql', [
   'TaskAssignmentEvent_scope_guard',
@@ -54,24 +57,30 @@ includes('apps/api/src/routes/tasks.ts', [
   'fromAssignedToId: assignment.assignedToId',
   'toAssignedToId: parsed.data.assignedToId',
   'Do not enter patient names, prescriptions, diagnoses, dates of birth, or other protected health information.',
+  'idempotencyKey: parsed.data.idempotencyKey',
+  'siteMemberships: { some: { siteId: context.site.id, isActive: true } }',
+  'skipped: skippedTasks',
 ]);
 
 includes('apps/web/app/my-work/page.tsx', [
-  'Continuixai Ops', 'Start My Day', 'Overdue', 'Completed today', 'Do not enter patient',
+  'Continuixai Ops', 'Start My Day', 'Overdue', 'Completed today', 'Skipped today', 'Do not enter patient',
 ]);
 includes('apps/web/app/team-work/page.tsx', [
-  'Team Work', 'Recurring templates', 'One-time assignment', 'siteDateInitialized', 'teamData.date', 'Count sessions',
+  'Team Work', 'Recurring templates', 'One-time assignment', 'siteDateInitialized', 'teamData.date', 'Count sessions', 'Assigned to<select', 'idempotencyKey',
 ]);
 includes('apps/web/app/daily-summary/page.tsx', [
-  'accomplished today', 'Count sessions', 'Sign out',
+  'accomplished today', 'Skipped today', 'Count sessions', 'Sign out',
 ]);
 includes('apps/web/app/manifest.ts', [
   'name: "Continuixai Ops"', 'start_url: "/my-work"', 'name: "Start Count"',
 ]);
 includes('apps/web/public/sw.js', [
-  'continuixai-ops-shell-v7', 'continuixai-ops-api-v3', 'title: "Continuixai Ops"', '"/my-work"',
+  'continuixai-ops-shell-v8', 'title: "Continuixai Ops"', '"/my-work"',
 ]);
 includes('apps/api/src/lib/mfa.ts', ['const issuer = "Continuixai Ops"']);
+includes('apps/web/lib/storeCountQueue.ts', ['ownerUserId: string', 'continuixai_count_queue']);
+includes('apps/api/src/index.ts', ['ENABLE_LEGACY_INVENTORY_FEATURES', 'if (legacyInventoryFeaturesEnabled)']);
+includes('render.yaml', ['branch: continuixai-ops-completion', 'MFA_ENCRYPTION_KEY']);
 
 const catalog = read('apps/api/src/lib/taskCatalog.ts');
 const legacyTaskLabel = 'Store' + ' Scan';

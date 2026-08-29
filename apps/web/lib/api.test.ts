@@ -33,7 +33,7 @@ describe("apiFetch", () => {
   });
 
   it("sends the saved locale as X-Locale", async () => {
-    localStorage.setItem("stash_locale", "en");
+    localStorage.setItem("continuixai_locale", "en");
     await apiFetch("/api/items");
     const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect((init.headers as Headers).get("X-Locale")).toBe("en");
@@ -46,7 +46,7 @@ describe("apiFetch", () => {
   });
 
   it("still honors an explicitly selected Korean locale", async () => {
-    localStorage.setItem("stash_locale", "ko");
+    localStorage.setItem("continuixai_locale", "ko");
     await apiFetch("/api/items");
     const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect((init.headers as Headers).get("X-Locale")).toBe("ko");

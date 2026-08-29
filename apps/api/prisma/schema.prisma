@@ -177,6 +177,7 @@ model User {
   storeCountEntriesCounted StoreCountEntry[]        @relation("StoreCountEntryCounter")
   storeCountScanLogs       StoreCountScanLog[]      @relation("StoreCountScanActor")
   organizationMemberships  OrganizationMembership[]
+  siteMemberships          SiteMembership[]
   inventoryTransactions    InventoryTransaction[]   @relation("InventoryTransactionActor")
   createdTaskTemplates     TaskTemplate[]           @relation("TaskTemplateCreatedBy")
   updatedTaskTemplates     TaskTemplate[]           @relation("TaskTemplateUpdatedBy")
@@ -226,6 +227,22 @@ model OrganizationMembership {
   @@index([organizationId, role, isActive])
 }
 
+model SiteMembership {
+  id        String   @id @default(cuid())
+  siteId    String
+  userId    String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, userId])
+  @@index([userId, isActive])
+  @@index([siteId, isActive])
+}
+
 model Site {
   id             String   @id @default(cuid())
   organizationId String
@@ -250,6 +267,7 @@ model Site {
   taskTemplates         TaskTemplate[]
   taskAssignments       TaskAssignment[]
   taskAssignmentEvents   TaskAssignmentEvent[]
+  memberships            SiteMembership[]
 
   @@unique([organizationId, code])
   @@index([organizationId, isActive])
@@ -665,6 +683,7 @@ model TaskTemplate {
 model TaskAssignment {
   id             String       @id @default(cuid())
   templateId     String?
+  idempotencyKey String?
   organizationId String
   siteId         String?
   assignedToId   String
@@ -692,6 +711,7 @@ model TaskAssignment {
   events       TaskAssignmentEvent[]
 
   @@unique([templateId, assignedToId, scheduledDate])
+  @@unique([organizationId, idempotencyKey])
   @@index([assignedToId, scheduledDate, status])
   @@index([organizationId, siteId, scheduledDate, status])
   @@index([templateId])

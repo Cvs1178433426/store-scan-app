@@ -191,7 +191,7 @@ export async function itemRoutes(app: FastifyInstance) {
     }
     reply
       .header("Content-Type", "text/csv; charset=utf-8")
-      .header("Content-Disposition", `attachment; filename="stash_items_${new Date().toISOString().slice(0, 10)}.csv"`)
+      .header("Content-Disposition", `attachment; filename="continuixai_ops_items_${new Date().toISOString().slice(0, 10)}.csv"`)
       .send(csv);
   });
 

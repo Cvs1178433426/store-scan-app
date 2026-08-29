@@ -359,8 +359,8 @@ export default function IntegrationsPage() {
           </ul>
           <p className="meta" style={{ marginTop: 8 }}>{t("webhookSignatureHint")}</p>
           <pre className="meta" style={{ whiteSpace: "pre-wrap", fontSize: "0.8rem" }}>
-{`# HMAC-SHA256("<timestamp>.<raw body>", secret) → X-Stash-Signature: sha256=<hex>
-# headers: X-Stash-Timestamp, X-Stash-Signature`}
+{`# HMAC-SHA256("<timestamp>.<raw body>", secret) → X-Continuixai-Signature: sha256=<hex>
+# headers: X-Continuixai-Timestamp, X-Continuixai-Signature`}
           </pre>
         </details>
         <p className="meta">{t("statusLabel")} {webhook?.hasValue ? t("statusSet") : t("statusUnset")}</p>

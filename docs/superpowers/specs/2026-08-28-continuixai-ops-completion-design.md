@@ -5,7 +5,7 @@
 - Company: **Continuixai**.
 - Application: **Continuixai Ops**.
 - `legacy scan task` is not the application name. It is one operational workflow/task inside Continuixai Ops.
-- Existing `/store-scan` and `/store-count` route paths may remain for backward compatibility, but application titles, navigation, login/recovery copy, PWA metadata, notifications, docs, and new code must identify the product as Continuixai Ops.
+- The supported counting route is `/store-count`; the previous legacy counting-route alias is removed. Application titles, navigation, login/recovery copy, PWA metadata, notifications, docs, and new code identify the product as Continuixai Ops.
 - Legacy persistence keys or protocol headers may remain where renaming would break deployed clients; they must not be presented as product branding.
 
 ## Goal

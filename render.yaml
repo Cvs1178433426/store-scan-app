@@ -2,7 +2,7 @@ services:
   - type: web
     name: continuixai-ops-api
     runtime: docker
-    branch: chatgpt-development
+    branch: continuixai-ops-completion
     dockerfilePath: ./apps/api/Dockerfile
     dockerCommand: sh -c "npx prisma migrate deploy --config apps/api/prisma.config.ts && node apps/api/dist/index.js"
     healthCheckPath: /health
@@ -12,6 +12,8 @@ services:
           name: continuixai-ops-db
           property: connectionString
       - key: JWT_SECRET
+        generateValue: true
+      - key: MFA_ENCRYPTION_KEY
         generateValue: true
       - key: NODE_ENV
         value: production
@@ -27,7 +29,7 @@ services:
   - type: web
     name: continuixai-ops-web
     runtime: docker
-    branch: chatgpt-development
+    branch: continuixai-ops-completion
     dockerfilePath: ./apps/web/Dockerfile
     envVars:
       - key: API_INTERNAL_URL

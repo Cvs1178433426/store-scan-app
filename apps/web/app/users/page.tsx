@@ -120,7 +120,7 @@ export default function UsersPage() {
           title={t("resetPasswordTitle")}
           hint={t("resetPasswordHint")}
           secrets={issuedSecrets}
-          downloadFilename={`stash-reset-password_${issuedSecrets[0]?.label ?? "user"}.txt`}
+          downloadFilename={`continuixai-ops-reset-password_${issuedSecrets[0]?.label ?? "user"}.txt`}
           onClose={() => setIssuedSecrets(null)}
         />
       )}

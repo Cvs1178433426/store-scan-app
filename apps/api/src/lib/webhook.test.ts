@@ -10,20 +10,20 @@ import {
 
 describe("buildLabelImageUrl", () => {
   it("builds a public label.png URL from the given base URL", () => {
-    expect(buildLabelImageUrl("barcode123", "https://stash.example.com")).toBe(
-      "https://stash.example.com/api/barcodes/barcode123/label.png",
+    expect(buildLabelImageUrl("barcode123", "https://ops.continuixai.example.com")).toBe(
+      "https://ops.continuixai.example.com/api/barcodes/barcode123/label.png",
     );
   });
 
   it("strips a trailing slash from the base URL", () => {
-    expect(buildLabelImageUrl("barcode123", "https://stash.example.com/")).toBe(
-      "https://stash.example.com/api/barcodes/barcode123/label.png",
+    expect(buildLabelImageUrl("barcode123", "https://ops.continuixai.example.com/")).toBe(
+      "https://ops.continuixai.example.com/api/barcodes/barcode123/label.png",
     );
   });
 });
 
 describe("buildWebhookPayload", () => {
-  const baseUrl = "https://stash.example.com";
+  const baseUrl = "https://ops.continuixai.example.com";
 
   it("includes the primary barcode's value/symbology and a label image URL", () => {
     const payload = buildWebhookPayload(
@@ -53,7 +53,7 @@ describe("buildWebhookPayload", () => {
       locationName: "냉장고",
       barcodeValue: "8801234567890",
       symbology: "EAN13",
-      labelImageUrl: "https://stash.example.com/api/barcodes/b2/label.png",
+      labelImageUrl: "https://ops.continuixai.example.com/api/barcodes/b2/label.png",
     });
     expect(typeof payload.timestamp).toBe("string");
   });
@@ -73,7 +73,7 @@ describe("buildWebhookPayload", () => {
     );
 
     expect(payload.barcodeValue).toBe("222");
-    expect(payload.labelImageUrl).toBe("https://stash.example.com/api/barcodes/b3/label.png");
+    expect(payload.labelImageUrl).toBe("https://ops.continuixai.example.com/api/barcodes/b3/label.png");
   });
 
   it("targets the given barcodeId instead of the primary one when provided", () => {
@@ -96,7 +96,7 @@ describe("buildWebhookPayload", () => {
 
     expect(payload.barcodeValue).toBe("http://localhost/i/item4");
     expect(payload.symbology).toBe("QR");
-    expect(payload.labelImageUrl).toBe("https://stash.example.com/api/barcodes/b5/label.png");
+    expect(payload.labelImageUrl).toBe("https://ops.continuixai.example.com/api/barcodes/b5/label.png");
   });
 
   it("sends null barcode fields when the item has no barcode at all", () => {

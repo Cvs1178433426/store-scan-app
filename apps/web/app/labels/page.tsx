@@ -68,7 +68,7 @@ export default function LabelsPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `stash-labels-${Date.now()}.pdf`;
+      a.download = `continuixai-ops-labels-${Date.now()}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {

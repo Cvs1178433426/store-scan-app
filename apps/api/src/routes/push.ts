@@ -55,7 +55,7 @@ export async function pushRoutes(app: FastifyInstance) {
     if (count === 0) return reply.code(400).send({ error: t("noPushSubscriptions", request.locale) });
 
     await sendPushToUser(request.user.sub, {
-      title: "Stash",
+      title: "Continuixai Ops",
       body: t("testPushBody", request.locale),
       url: "/backup",
     });

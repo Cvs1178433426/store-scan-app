@@ -30,9 +30,6 @@ const JOB_TITLES: JobTitle[] = [
 const PRIORITIES: TaskPriority[] = ["LOW", "NORMAL", "HIGH", "URGENT"];
 const ROLLOVER: TaskRolloverPolicy[] = ["REMAIN_OVERDUE", "ROLL_FORWARD", "SKIP"];
 
-function todayKey() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function templatePayload(form: TemplateForm) {
   return {
@@ -69,7 +66,7 @@ const freshTemplate = (): TemplateForm => ({
   title: "",
   instructions: "",
   recurrence: "DAILY",
-  startDate: todayKey(),
+  startDate: "",
   endDate: "",
   weeklyDay: "1",
   monthlyDay: "1",
@@ -95,15 +92,16 @@ export default function TeamWorkPage() {
   const [oneTimeEmployee, setOneTimeEmployee] = useState("");
   const [oneTimeTitle, setOneTimeTitle] = useState("");
   const [oneTimeInstructions, setOneTimeInstructions] = useState("");
-  const [oneTimeDate, setOneTimeDate] = useState(todayKey());
+  const [oneTimeDate, setOneTimeDate] = useState("");
   const [oneTimeDue, setOneTimeDue] = useState("");
   const [oneTimePriority, setOneTimePriority] = useState<TaskPriority>("NORMAL");
   const [managerNotes, setManagerNotes] = useState<Record<string, string>>({});
   const [period, setPeriod] = useState<"DAILY" | "WEEKLY" | "MONTHLY">("DAILY");
-  const [anchor, setAnchor] = useState(todayKey());
+  const [anchor, setAnchor] = useState("");
   const [busy, setBusy] = useState(false);
   const [accessError, setAccessError] = useState<string | null>(null);
   const siteDateInitialized = useRef(false);
+  const oneTimeIdempotencyKey = useRef<string | null>(null);
 
   useEffect(() => { if (!loading && !user) router.replace("/login"); }, [loading, user, router]);
 
@@ -115,7 +113,7 @@ export default function TeamWorkPage() {
         apiJson<TaskEmployee[]>("/api/tasks/employees"),
         apiJson<TaskTemplate[]>("/api/tasks/templates"),
         apiJson<TeamWorkResponse>("/api/tasks/team"),
-        apiJson<TaskReportResponse>(`/api/tasks/reports?period=${period}&anchor=${anchor}`),
+        apiJson<TaskReportResponse>(`/api/tasks/reports?period=${period}${anchor ? `&anchor=${anchor}` : ""}`),
       ]);
       setEmployees(employeeData);
       setTemplates(templateData);
@@ -201,6 +199,7 @@ export default function TeamWorkPage() {
       await apiJson("/api/tasks/assignments", {
         method: "POST",
         body: JSON.stringify({
+          idempotencyKey: oneTimeIdempotencyKey.current ?? (oneTimeIdempotencyKey.current = (typeof crypto !== "undefined" && "randomUUID" in crypto) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`),
           assignedToId: oneTimeEmployee,
           title: oneTimeTitle,
           instructions: oneTimeInstructions.trim() || null,
@@ -210,13 +209,14 @@ export default function TeamWorkPage() {
           rolloverPolicy: "REMAIN_OVERDUE",
         }),
       });
+      oneTimeIdempotencyKey.current = null;
       setOneTimeTitle(""); setOneTimeInstructions(""); setOneTimeDue(""); setOneTimePriority("NORMAL");
       await refreshAll();
       show("One-time assignment created.", "success");
     } catch (err) { show(err instanceof Error ? err.message : "Could not create assignment.", "error"); }
   }
 
-  async function updateAssignment(task: TaskAssignment, patch: { status?: TaskStatus; managerNote?: string | null }) {
+  async function updateAssignment(task: TaskAssignment, patch: { status?: TaskStatus; managerNote?: string | null; assignedToId?: string }) {
     try {
       await apiJson(`/api/tasks/assignments/${task.id}`, { method: "PATCH", body: JSON.stringify(patch) });
       await refreshAll();
@@ -287,13 +287,13 @@ export default function TeamWorkPage() {
           <label>Task title<input value={templateForm.title} onChange={(e) => setTemplateForm((v) => ({ ...v, title: e.target.value }))} required maxLength={200} /></label>
           <label>Instructions<textarea value={templateForm.instructions} onChange={(e) => setTemplateForm((v) => ({ ...v, instructions: e.target.value }))} rows={2} maxLength={2000} /></label>
           <div className="manager-form-grid">
-            <label>Start date<input type="date" value={templateForm.startDate} onChange={(e) => setTemplateForm((v) => ({ ...v, startDate: e.target.value }))} required /></label>
+            <label>Start date<input type="date" value={templateForm.startDate} disabled={!team} onChange={(e) => setTemplateForm((v) => ({ ...v, startDate: e.target.value }))} required /></label>
             <label>End date<input type="date" value={templateForm.endDate} onChange={(e) => setTemplateForm((v) => ({ ...v, endDate: e.target.value }))} /></label>
             <label>Due time<input type="time" value={templateForm.dueTime} onChange={(e) => setTemplateForm((v) => ({ ...v, dueTime: e.target.value }))} /></label>
             {templateForm.recurrence === "WEEKLY" && <label>Weekday<select value={templateForm.weeklyDay} onChange={(e) => setTemplateForm((v) => ({ ...v, weeklyDay: e.target.value }))}>{["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].map((name, index) => <option key={name} value={index}>{name}</option>)}</select></label>}
             {templateForm.recurrence === "MONTHLY" && <label>Day of month<input type="number" min={1} max={31} value={templateForm.monthlyDay} onChange={(e) => setTemplateForm((v) => ({ ...v, monthlyDay: e.target.value }))} /></label>}
           </div>
-          <div className="manager-actions"><button type="submit">{editingTemplateId ? "Update template" : "Create template"}</button>{editingTemplateId && <button type="button" className="secondary" onClick={() => { setEditingTemplateId(null); setTemplateForm(freshTemplate()); }}>Cancel edit</button>}</div>
+          <div className="manager-actions"><button type="submit" disabled={!team || !templateForm.startDate}>{editingTemplateId ? "Update template" : "Create template"}</button>{editingTemplateId && <button type="button" className="secondary" onClick={() => { setEditingTemplateId(null); setTemplateForm(freshTemplate()); }}>Cancel edit</button>}</div>
         </form>
 
         <div className="manager-table-list">
@@ -307,13 +307,13 @@ export default function TeamWorkPage() {
         <form className="manager-form card" onSubmit={createOneTime}>
           <div className="manager-form-grid">
             <label>Employee<select value={oneTimeEmployee} onChange={(e) => setOneTimeEmployee(e.target.value)} required><option value="">Select employee</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></label>
-            <label>Date<input type="date" value={oneTimeDate} onChange={(e) => setOneTimeDate(e.target.value)} required /></label>
+            <label>Date<input type="date" value={oneTimeDate} disabled={!team} onChange={(e) => setOneTimeDate(e.target.value)} required /></label>
             <label>Due time<input type="time" value={oneTimeDue} onChange={(e) => setOneTimeDue(e.target.value)} /></label>
             <label>Priority<select value={oneTimePriority} onChange={(e) => setOneTimePriority(e.target.value as TaskPriority)}>{PRIORITIES.map((v) => <option key={v} value={v}>{humanizeEnum(v)}</option>)}</select></label>
           </div>
           <label>Task title<input value={oneTimeTitle} onChange={(e) => setOneTimeTitle(e.target.value)} required maxLength={200} /></label>
           <label>Instructions<textarea value={oneTimeInstructions} onChange={(e) => setOneTimeInstructions(e.target.value)} rows={2} maxLength={2000} /></label>
-          <button type="submit">Assign work</button>
+          <button type="submit" disabled={!team || !oneTimeDate}>Assign work</button>
         </form>
       </section>
 
@@ -324,6 +324,7 @@ export default function TeamWorkPage() {
             <article className="card manager-row manager-assignment" key={task.id}>
               <div className="manager-assignment-main"><strong>{task.title}</strong><div className="manager-muted">{task.assignedTo?.name ?? task.assignedToId} · {task.scheduledDate.slice(0,10)} · {humanizeEnum(task.priority)} · {humanizeEnum(task.status)}</div>{task.employeeNote && <p><strong>Employee note:</strong> {task.employeeNote}</p>}{task.events && task.events.length > 0 && <details><summary>History</summary><ul className="manager-history">{task.events.map((event) => <li key={event.id}>{humanizeEnum(event.action)} · {new Date(event.createdAt).toLocaleString()}</li>)}</ul></details>}</div>
               <div className="manager-assignment-controls">
+                <label>Assigned to<select value={task.assignedToId} onChange={(e) => void updateAssignment(task, { assignedToId: e.target.value })} disabled={task.status === "COMPLETED"}>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}</select></label>
                 <textarea rows={2} maxLength={2000} value={managerNotes[task.id] ?? task.managerNote ?? ""} onChange={(e) => setManagerNotes((notes) => ({ ...notes, [task.id]: e.target.value }))} placeholder="Manager note" />
                 <div className="manager-actions"><button type="button" className="secondary" onClick={() => void saveManagerNote(task)}>Save note</button>{task.status === "COMPLETED" ? <button type="button" onClick={() => void updateAssignment(task, { status: "OPEN" })}>Reopen</button> : <><button type="button" onClick={() => void updateAssignment(task, { status: "COMPLETED" })}>Complete</button><button type="button" className="secondary" onClick={() => void updateAssignment(task, { status: "SKIPPED" })}>Skip</button><button type="button" className="secondary" onClick={() => void updateAssignment(task, { status: "CANCELLED" })}>Cancel</button></>}</div>
               </div>
@@ -335,7 +336,7 @@ export default function TeamWorkPage() {
 
       <section className="manager-section">
         <div className="manager-section-title"><div><h2>Reports</h2><p>Daily, weekly, and monthly work plus count activity.</p></div><button type="button" onClick={() => void downloadReport()}>Export CSV</button></div>
-        <div className="manager-report-controls card"><label>Period<select value={period} onChange={(e) => setPeriod(e.target.value as typeof period)}><option value="DAILY">Daily</option><option value="WEEKLY">Weekly</option><option value="MONTHLY">Monthly</option></select></label><label>Anchor date<input type="date" value={anchor} onChange={(e) => setAnchor(e.target.value)} /></label></div>
+        <div className="manager-report-controls card"><label>Period<select value={period} onChange={(e) => setPeriod(e.target.value as typeof period)}><option value="DAILY">Daily</option><option value="WEEKLY">Weekly</option><option value="MONTHLY">Monthly</option></select></label><label>Anchor date<input type="date" value={anchor} disabled={!team} onChange={(e) => setAnchor(e.target.value)} /></label></div>
         {report && <><div className="summary-grid"><div className="summary-stat"><strong>{report.totals.assignments ?? 0}</strong><span>Assignments</span></div><div className="summary-stat"><strong>{report.totals.COMPLETED ?? 0}</strong><span>Completed</span></div><div className="summary-stat"><strong>{report.totals.OPEN ?? 0}</strong><span>Open</span></div><div className="summary-stat"><strong>{report.countActivity.sessions}</strong><span>Count sessions</span></div><div className="summary-stat"><strong>{report.countActivity.locations}</strong><span>Locations</span></div><div className="summary-stat"><strong>{report.countActivity.units}</strong><span>Units</span></div></div><div className="manager-table-list">{report.employees.map((row) => <div className="card manager-row" key={row.userId}><div><strong>{row.name}</strong><div className="manager-muted">{row.employeeNumber || "No employee number"}</div></div><div className="manager-kpis"><span>{row.completed} completed</span><span>{row.open} open</span><span>{row.overdue} overdue</span></div></div>)}</div></>}
       </section>
     </main>

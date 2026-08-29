@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const ts = require('/opt/nvm/versions/node/v22.16.0/lib/node_modules/typescript');
+const ts = require('typescript');
 
 const roots = ['apps/api/src', 'apps/web/app', 'apps/web/components', 'apps/web/lib', 'packages/shared/src'];
 const failures = [];

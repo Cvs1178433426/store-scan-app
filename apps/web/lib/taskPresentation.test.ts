@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countTaskActionLabel, greetingForHour, groupAssignments, isStoreScanTask } from './taskPresentation';
+import { countTaskActionLabel, greetingForHour, groupAssignments, isCountTask } from './taskPresentation';
 
 describe('greetingForHour', () => {
   it('uses documented time-of-day boundaries', () => {
@@ -19,19 +19,21 @@ describe('groupAssignments', () => {
       { id: 'later', title: 'Later', status: 'OPEN', scheduledDate: '2026-08-30T00:00:00Z', priority: 'LOW', dueAt: null },
       { id: 'done', title: 'Done', status: 'COMPLETED', scheduledDate: '2026-08-27T00:00:00Z', completedAt: '2026-08-28T10:00:00Z', priority: 'NORMAL', dueAt: null },
       { id: 'done-late', title: 'Late local completion', status: 'COMPLETED', scheduledDate: '2026-08-28T00:00:00Z', completedAt: '2026-08-29T02:00:00Z', priority: 'NORMAL', dueAt: null },
+      { id: 'skipped', title: 'Skipped', status: 'SKIPPED', scheduledDate: '2026-08-28T00:00:00Z', priority: 'NORMAL', dueAt: null },
     ], '2026-08-28');
     expect(grouped.overdue.map((x) => x.id)).toEqual(['over']);
     expect(grouped.today.map((x) => x.id)).toEqual(['urgent', 'high']);
     expect(grouped.thisWeek.map((x) => x.id)).toEqual(['later']);
     expect(grouped.completedToday.map((x) => x.id)).toEqual(['done', 'done-late']);
+    expect(grouped.skippedToday.map((x) => x.id)).toEqual(['skipped']);
   });
 });
 
-describe('Store Scan operational task detection', () => {
+describe('count-task detection', () => {
   it('only links scan/count task wording', () => {
-    expect(isStoreScanTask({ title: 'Complete Store Scan', instructions: null })).toBe(true);
-    expect(countTaskActionLabel({ title: 'Complete Store Scan', instructions: null })).toBe('Start Store Scan');
+    expect(isCountTask({ title: 'Complete Store Scan', instructions: null })).toBe(true);
+    expect(countTaskActionLabel({ title: 'Complete Store Scan', instructions: null })).toBe('Start Count');
     expect(countTaskActionLabel({ title: 'Cycle count aisle 4', instructions: null })).toBe('Start Count');
-    expect(isStoreScanTask({ title: 'Opening safety walk', instructions: 'Check exits' })).toBe(false);
+    expect(isCountTask({ title: 'Opening safety walk', instructions: 'Check exits' })).toBe(false);
   });
 });

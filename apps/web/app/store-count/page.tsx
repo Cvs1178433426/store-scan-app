@@ -87,8 +87,8 @@ export default function StoreCountPage() {
   const [exporting, setExporting] = useState(false);
 
   function refreshQueueState() {
-    setPendingCount(getPendingCountQueue().length);
-    setFailedScans(getFailedCountQueue());
+    setPendingCount(getPendingCountQueue(user?.id).length);
+    setFailedScans(getFailedCountQueue(user?.id));
   }
 
   useEffect(() => {
@@ -208,7 +208,8 @@ export default function StoreCountPage() {
     try {
       let synced = 0;
       let newlyFailed = 0;
-      for (const queued of getPendingCountQueue()) {
+      if (!user) return;
+      for (const queued of getPendingCountQueue(user.id)) {
         try {
           await apiJson(`/api/store-count/sessions/${queued.sessionId}/scan`, {
             method: "POST",
@@ -275,7 +276,7 @@ export default function StoreCountPage() {
       setSession((current) => current ? { ...current, entries: [entry, ...current.entries.filter((existing) => existing.id !== entry.id)] } : current);
       setFlash({ kind: entry.product ? "known" : "unknown", text: entry.product ? `${entry.product.name} — added ${quantityDelta}, ${entry.quantity} here` : `Unknown UPC ${barcode} counted (${quantityDelta}) — add product details later` });
     } catch (error) {
-      enqueueCountScan({ sessionId: session.id, locationId, barcodeValue: barcode, quantityDelta }, clientScanId);
+      enqueueCountScan({ ownerUserId: user.id, sessionId: session.id, locationId, barcodeValue: barcode, quantityDelta }, clientScanId);
       if (error instanceof ApiError && [400, 404, 409].includes(error.status)) {
         markCountScanFailed(clientScanId, error.message || `Server rejected scan (${error.status})`);
         refreshQueueState();
@@ -348,12 +349,12 @@ export default function StoreCountPage() {
 
   async function cancelSession() {
     if (!session) return;
-    const unresolvedForSession = getCountQueue().filter((entry) => entry.sessionId === session.id).length;
+    const unresolvedForSession = getCountQueue().filter((entry) => entry.sessionId === session.id && entry.ownerUserId === user?.id).length;
     const warning = unresolvedForSession > 0 ? `Cancel this count session? This will deliberately discard ${unresolvedForSession} locally captured unresolved scan${unresolvedForSession === 1 ? "" : "s"}.` : "Cancel this count session?";
     if (!window.confirm(warning)) return;
     try {
       await apiJson(`/api/store-count/sessions/${session.id}/cancel`, { method: "POST" });
-      clearCountQueueForSession(session.id);
+      clearCountQueueForSession(session.id, user?.id);
       refreshQueueState();
       setSession(null);
       setSummary(null);
