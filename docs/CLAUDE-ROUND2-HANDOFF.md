@@ -151,3 +151,23 @@ Separately verdict:
 - MOBILE/HANDHELD READINESS
 
 For every remaining finding include severity, file/line, reproduction, consequence, correction and regression test. Do not silently fix anything on this pass.
+
+## Local remediation verification evidence
+
+The remediation environment successfully ran the dependency-light gates on the final remediation tree:
+
+```text
+task workflow pure tests passed
+task schedule pure tests passed
+task presentation pure tests passed
+starter task catalog passed (82 templates)
+task route contract passed
+work UI contract passed
+Continuixai Ops branding verification passed
+Continuixai Ops readiness source contracts passed
+Claude Round 1 remediation source contracts passed
+transpile syntax check passed (165 TypeScript files)
+git diff --check: PASS
+```
+
+A clean dependency install in a temporary checkout could not be completed in this sandbox. The normal `npm ci --ignore-scripts` attempt timed out. An explicit offline attempt failed with `ENOTCACHED` for the TypeScript tarball, so this handoff does **not** claim that Prisma generation, Vitest, lint, or production builds passed. The offline attempt also emitted an engine warning because the local verifier runs Node 22 while `@zxing/library@0.23.0` declares Node >=24; CI and the web Docker image use Node 24. Re-run every required gate above in your own network-enabled Node-24 environment and treat any failure as a release blocker.
