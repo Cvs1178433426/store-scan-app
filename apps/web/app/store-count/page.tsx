@@ -383,7 +383,7 @@ export default function StoreCountPage() {
   return (
     <main className="container" style={{ maxWidth: 680, paddingBottom: 48 }}>
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "end", marginBottom: 14, gap: 12 }}>
-        <div><p style={{ margin: 0, opacity: 0.65, fontSize: 12, fontWeight: 800, letterSpacing: ".08em" }}>STORE SCAN</p><h1 style={{ margin: "3px 0 0" }}>Count</h1></div>
+        <div><p style={{ margin: 0, opacity: 0.65, fontSize: 12, fontWeight: 800, letterSpacing: ".08em" }}>CONTINUIXAI OPS</p><h1 style={{ margin: "3px 0 0" }}>Count</h1></div>
         {session && <button type="button" className="secondary" onClick={() => view === "count" ? void showSummary() : setView("count")}>{view === "count" ? "Summary" : "Count"}</button>}
       </header>
 

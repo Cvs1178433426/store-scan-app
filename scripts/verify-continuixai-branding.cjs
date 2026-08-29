@@ -23,7 +23,7 @@ function walk(dir){
     else if(textExt.has(path.extname(entry.name)) || entry.name==='package.json'){
       const rel=full.replaceAll('\\','/');
       const src=fs.readFileSync(full,'utf8');
-      if(src.includes('Store Scan') && !allowedStoreScanFiles.has(rel)) violations.push(`${rel}: prohibited application-level Store Scan branding`);
+      if(/store\s+scan/i.test(src) && !allowedStoreScanFiles.has(rel)) violations.push(`${rel}: prohibited application-level Store Scan branding`);
       if(rel !== 'scripts/verify-continuixai-branding.cjs' && src.includes('@' + 'stash/')) violations.push(`${rel}: legacy package namespace`);
     }
   }

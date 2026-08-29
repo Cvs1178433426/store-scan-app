@@ -8,6 +8,7 @@ export interface User {
   role: UserRole;
   employeeNumber?: string | null;
   jobTitle?: JobTitle | null;
+  taskManager?: boolean;
 }
 
 export type BarcodeSymbology = "EAN13" | "UPCA" | "CODE128" | "QR" | "DATA_MATRIX" | "OTHER";
