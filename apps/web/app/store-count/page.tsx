@@ -260,7 +260,7 @@ export default function StoreCountPage() {
 
   async function handleBarcode(rawValue: string, quantityDelta = 1) {
     const barcode = rawValue.trim();
-    if (!barcode || !session || !locationId || busyRef.current || quantityDelta < 1 || quantityDelta > 999) return;
+    if (!barcode || !user || !session || !locationId || busyRef.current || quantityDelta < 1 || quantityDelta > 999) return;
     const now = Date.now();
     if (quantityDelta === 1 && lastScanRef.current?.value === barcode && now - lastScanRef.current.at < SAME_VALUE_DEBOUNCE_MS) return;
     lastScanRef.current = { value: barcode, at: now };
