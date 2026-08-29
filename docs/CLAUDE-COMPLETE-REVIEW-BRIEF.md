@@ -172,12 +172,14 @@ npm test
 npm run lint
 npm run build
 node scripts/test-task-workflow-pure.cjs
+node scripts/test-task-schedule-pure.cjs
 node scripts/verify-task-route-contract.cjs
 node scripts/test-starter-task-catalog.cjs
 node scripts/test-task-presentation-pure.cjs
 node scripts/verify-work-ui-contract.cjs
 node scripts/verify-continuixai-branding.cjs
 node scripts/verify-continuixai-readiness.cjs
+node scripts/transpile-check.cjs
 ```
 
 Also run any existing tenant-integrity, count-integrity, security, and migration verification scripts in `scripts/` and the repository CI workflow.
