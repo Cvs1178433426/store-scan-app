@@ -800,7 +800,20 @@ export async function taskRoutes(app: FastifyInstance) {
     if (!context) return reply.code(403).send({ error: "Manager access required." });
     const target = await prisma.organizationMembership.findUnique({
       where: { organizationId_userId: { organizationId: context.site.organizationId, userId: id } },
-      select: { user: { select: { id: true, isActive: true } }, isActive: true },
+      select: {
+        user: {
+          select: {
+            id: true,
+            isActive: true,
+            siteMemberships: {
+              where: { siteId: context.site.id, isActive: true },
+              select: { id: true },
+              take: 1,
+            },
+          },
+        },
+        isActive: true,
+      },
     });
     if (!target?.isActive || !target.user.isActive || target.user.siteMemberships.length === 0) return reply.code(404).send({ error: "Active employee for this site not found." });
     return prisma.user.update({

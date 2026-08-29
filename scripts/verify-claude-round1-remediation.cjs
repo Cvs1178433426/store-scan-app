@@ -19,6 +19,11 @@ assert.ok(tasks.includes('organizationId_idempotencyKey'), 'one-time retries mus
 assert.ok(tasks.includes('siteMemberships: { some: { siteId: context.site.id, isActive: true } }'), 'employee listing must be site scoped');
 assert.ok(tasks.includes('skipped: skippedTasks'), 'daily summary must expose skipped tasks');
 
+
+const workflow = read('apps/api/src/lib/taskWorkflow.ts');
+assert.ok(!workflow.includes('jobTitle: string;'), 'task snapshot jobTitle must retain the Prisma JobTitle enum type');
+assert.ok(tasks.includes('app.patch("/users/:id/job-title"') && tasks.includes('siteMemberships: { where: { siteId: context.site.id, isActive: true }'), 'job-title mutation must select site membership before checking it');
+
 const auth = read('apps/web/lib/auth-context.tsx');
 assert.ok(!auth.includes('clearCountQueue'), 'auth invalidation must not clear unsynced Count queue');
 assert.ok(auth.includes('have not synced yet'), 'auth invalidation must warn about unsynced Count work');

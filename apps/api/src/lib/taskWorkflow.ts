@@ -1,8 +1,10 @@
+import type { JobTitle } from "@prisma/client";
+
 export type TaskSnapshotTemplate = {
   id: string;
   organizationId: string;
   siteId: string | null;
-  jobTitle: string;
+  jobTitle: JobTitle;
   title: string;
   instructions: string | null;
   recurrence: "ONCE" | "DAILY" | "WEEKLY" | "MONTHLY";
