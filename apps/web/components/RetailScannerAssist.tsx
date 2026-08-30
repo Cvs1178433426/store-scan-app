@@ -61,10 +61,6 @@ export function RetailScannerAssist() {
         if (cancelled || decodingRef.current || window.location.pathname !== "/store-count") return;
         const video = document.querySelector<HTMLVideoElement>(".scanner-frame video");
         if (!video || !video.srcObject) return;
-        if (!readyMarked) {
-          markRetailScannerReady();
-          readyMarked = true;
-        }
 
         const frame = captureFrame(video, canvas);
         if (!frame) return;
@@ -84,6 +80,10 @@ export function RetailScannerAssist() {
             return;
           }
 
+          if (!readyMarked) {
+            markRetailScannerReady();
+            readyMarked = true;
+          }
           lastSeenRef.current = { value, at: now };
           if (armedValueRef.current === value) return;
           armedValueRef.current = value;
