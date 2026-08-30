@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
-import { createScanHints, isQrScanFormat, symbologyFromScanFormat } from "./barcodeScanner";
+import { createScanHints, getScannerFocusRegion, isQrScanFormat, symbologyFromScanFormat } from "./barcodeScanner";
 
 describe("barcodeScanner format constants vs @zxing/library", () => {
   it("maps BarcodeFormat enum values to the expected symbology", () => {
@@ -28,5 +28,16 @@ describe("barcodeScanner format constants vs @zxing/library", () => {
       BarcodeFormat.CODE_128,
       BarcodeFormat.QR_CODE,
     ]);
+  });
+
+  it("crops live video to the center scan guide so retail barcodes occupy more pixels", () => {
+    expect(getScannerFocusRegion(1280, 720)).toEqual({
+      sx: 128,
+      sy: 180,
+      sw: 1024,
+      sh: 360,
+      outputWidth: 1280,
+      outputHeight: 450,
+    });
   });
 });
