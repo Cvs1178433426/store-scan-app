@@ -28,6 +28,7 @@ export const SCAN_VIDEO_CONSTRAINTS: MediaTrackConstraints = {
 export async function createScanHints(): Promise<Map<number, unknown>> {
   const { BarcodeFormat, DecodeHintType } = await import("@zxing/library");
   return new Map<number, unknown>([
+    [DecodeHintType.TRY_HARDER, true],
     [
       DecodeHintType.POSSIBLE_FORMATS,
       [
