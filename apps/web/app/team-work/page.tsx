@@ -6,6 +6,8 @@ import { apiFetch, apiJson } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 import { useToast } from "../../lib/toast-context";
 import { humanizeEnum } from "../../lib/taskPresentation";
+import { BRAND_NAME } from "../../lib/brand";
+import { BrandLockup } from "../../components/BrandLockup";
 import type {
   JobTitle,
   TaskAssignment,
@@ -29,7 +31,6 @@ const JOB_TITLES: JobTitle[] = [
 ];
 const PRIORITIES: TaskPriority[] = ["LOW", "NORMAL", "HIGH", "URGENT"];
 const ROLLOVER: TaskRolloverPolicy[] = ["REMAIN_OVERDUE", "ROLL_FORWARD", "SKIP"];
-
 
 function templatePayload(form: TemplateForm) {
   return {
@@ -145,7 +146,7 @@ export default function TeamWorkPage() {
   }
 
   async function installStarterLibrary() {
-    if (!window.confirm("Install any missing Continuixai Ops starter templates for all six job titles? Existing templates will not be replaced.")) return;
+    if (!window.confirm(`Install any missing ${BRAND_NAME} starter templates for all six job titles? Existing templates will not be replaced.`)) return;
     try {
       const result = await apiJson<{ installed: number; existing: number; totalCatalog: number }>("/api/tasks/templates/starter-library", { method: "POST" });
       await refreshAll();
@@ -235,7 +236,7 @@ export default function TeamWorkPage() {
       if (!response.ok) throw new Error(`Report export failed (${response.status})`);
       const blob = await response.blob();
       const disposition = response.headers.get("content-disposition") ?? "";
-      const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? `continuixai-ops-${period.toLowerCase()}-${anchor}.csv`;
+      const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? `ContinuiXai-${period.toLowerCase()}-${anchor}.csv`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
       show("Report downloaded.", "success");
@@ -246,12 +247,12 @@ export default function TeamWorkPage() {
   const inactiveTemplates = useMemo(() => templates.filter((template) => !template.isActive), [templates]);
 
   if (loading || !user) return null;
-  if (accessError) return <main className="container work-container"><header className="work-hero compact"><div className="work-brand">Continuixai Ops</div><h1>Team Work</h1></header><section className="card"><p className="error-text">{accessError}</p><button type="button" className="secondary" onClick={() => router.push("/my-work")}>Back to My Work</button></section></main>;
+  if (accessError) return <main className="container work-container"><header className="work-hero compact"><BrandLockup compact /><h1>Team Work</h1></header><section className="card"><p className="error-text">{accessError}</p><button type="button" className="secondary" onClick={() => router.push("/my-work")}>Back to My Work</button></section></main>;
 
   return (
     <main className="container manager-container">
       <header className="work-hero compact">
-        <div className="work-brand">Continuixai Ops</div>
+        <BrandLockup compact />
         <h1>Team Work</h1>
         <p>{team?.site.name || team?.site.code || "Current site"} · manage assignments, recurring work, and results.</p>
       </header>
