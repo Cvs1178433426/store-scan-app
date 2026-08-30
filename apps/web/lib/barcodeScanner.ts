@@ -27,7 +27,33 @@ export function getScannerFocusRegion(width: number, height: number) {
   };
 }
 
+async function installFocusedScannerCapture() {
+  const { BrowserCodeReader } = await import("@zxing/browser");
+
+  BrowserCodeReader.drawImageOnCanvas = (context, source) => {
+    const { width, height } = BrowserCodeReader.getMediaElementDimensions(source);
+    const region = getScannerFocusRegion(width, height);
+    const canvas = context.canvas;
+
+    if (canvas.width !== region.outputWidth) canvas.width = region.outputWidth;
+    if (canvas.height !== region.outputHeight) canvas.height = region.outputHeight;
+
+    context.drawImage(
+      source,
+      region.sx,
+      region.sy,
+      region.sw,
+      region.sh,
+      0,
+      0,
+      region.outputWidth,
+      region.outputHeight,
+    );
+  };
+}
+
 export async function createScanHints(): Promise<Map<number, unknown>> {
+  await installFocusedScannerCapture();
   const { BarcodeFormat, DecodeHintType } = await import("@zxing/library");
   return new Map<number, unknown>([
     [DecodeHintType.TRY_HARDER, true],
