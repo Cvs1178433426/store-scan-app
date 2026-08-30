@@ -461,6 +461,9 @@ export async function storeCountRoutes(app: FastifyInstance) {
     }
     if (access.session.status !== "ACTIVE") return reply.code(409).send({ error: "count session is not active" });
 
+    const entryCount = await prisma.storeCountEntry.count({ where: { sessionId: id } });
+    if (entryCount === 0) return reply.code(409).send({ error: "cannot complete an empty count" });
+
     return prisma.storeCountSession.update({
       where: { id },
       data: { status: "COMPLETED", completedAt: new Date() },
