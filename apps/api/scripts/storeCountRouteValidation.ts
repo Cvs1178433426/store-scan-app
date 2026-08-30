@@ -16,6 +16,7 @@ async function main() {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const adminEmail = `route-admin-${suffix}@example.test`;
   const userEmail = `route-user-${suffix}@example.test`;
+  const unassignedEmail = `route-unassigned-${suffix}@example.test`;
   const organizationSlug = `route-org-${suffix}`;
   const siteCode = `SITE-${suffix}`;
   const locationCode = `ROUTE-${suffix}`;
@@ -37,16 +38,19 @@ async function main() {
 
   let adminId: string | null = null;
   let userId: string | null = null;
+  let unassignedUserId: string | null = null;
   let organizationId: string | null = null;
   let locationId: string | null = null;
 
   try {
-    const [admin, user] = await Promise.all([
+    const [admin, user, unassignedUser] = await Promise.all([
       prisma.user.create({ data: { name: "Route Validation Admin", email: adminEmail, passwordHash: "not-used-in-route-validation", role: "ADMIN" } }),
       prisma.user.create({ data: { name: "Route Validation User", email: userEmail, passwordHash: "not-used-in-route-validation", role: "GENERAL" } }),
+      prisma.user.create({ data: { name: "Route Unassigned User", email: unassignedEmail, passwordHash: "not-used-in-route-validation", role: "GENERAL" } }),
     ]);
     adminId = admin.id;
     userId = user.id;
+    unassignedUserId = unassignedUser.id;
 
     const organization = await prisma.organization.create({ data: { name: "Route Validation Organization", slug: organizationSlug } });
     organizationId = organization.id;
@@ -66,7 +70,25 @@ async function main() {
 
     const adminToken = app.jwt.sign({ sub: admin.id, role: "ADMIN", tv: 0 });
     const userToken = app.jwt.sign({ sub: user.id, role: "GENERAL", tv: 0 });
+    const unassignedToken = app.jwt.sign({ sub: unassignedUser.id, role: "GENERAL", tv: 0 });
     const auth = (token: string) => ({ authorization: `Bearer ${token}` });
+
+    // Live-pilot regression: a newly registered GENERAL user has no tenant/site
+    // membership yet. With one unambiguous active organization/site available,
+    // Start Count must provision the pilot membership rather than dead-end.
+    const unassignedStart = await app.inject({
+      method: "POST",
+      url: "/api/store-count/sessions",
+      headers: auth(unassignedToken),
+      payload: { name: "Newly registered user pilot count" },
+    });
+    assert(unassignedStart.statusCode === 201, `unassigned pilot user could not start count: ${unassignedStart.statusCode} ${unassignedStart.body}`);
+    const unassignedSession = parseJson<{ id: string; siteId: string | null }>(unassignedStart.body);
+    assert(unassignedSession.siteId === site.id, "unassigned pilot user was not provisioned onto the only active site");
+    const provisionedOrgMembership = await prisma.organizationMembership.findUnique({ where: { organizationId_userId: { organizationId: organization.id, userId: unassignedUser.id } } });
+    assert(provisionedOrgMembership?.isActive === true && provisionedOrgMembership.role === "INVENTORY", "pilot provisioning did not create active INVENTORY organization membership");
+    const provisionedSiteMembership = await prisma.siteMembership.findUnique({ where: { siteId_userId: { siteId: site.id, userId: unassignedUser.id } } });
+    assert(provisionedSiteMembership?.isActive === true, "pilot provisioning did not create active site membership");
 
     const startResponses = await Promise.all(Array.from({ length: 10 }, () => app.inject({ method: "POST", url: "/api/store-count/sessions", headers: auth(adminToken), payload: { name: "Route concurrency validation", siteId: site.id } })));
     for (const response of startResponses) assert(response.statusCode === 200 || response.statusCode === 201, `session creation returned ${response.statusCode}: ${response.body}`);
@@ -137,7 +159,6 @@ async function main() {
     const crossSessionReuse = await app.inject({ method: "POST", url: `/api/store-count/sessions/${userSessionId}/scan`, headers: auth(adminToken), payload: { barcodeValue: barcodeConflict, locationId: location.id, quantityDelta: 1, clientScanId: conflictKey } });
     assert(crossSessionReuse.statusCode === 409, `cross-session idempotency-key reuse returned ${crossSessionReuse.statusCode}, expected 409`);
 
-    // Restore explicit HTTP-level proof that completed sessions reject new scans.
     const completeResponse = await app.inject({ method: "POST", url: `/api/store-count/sessions/${sessionId}/complete`, headers: auth(adminToken) });
     assert(completeResponse.statusCode === 200, `session completion returned ${completeResponse.statusCode}: ${completeResponse.body}`);
     const completedScan = await app.inject({ method: "POST", url: `/api/store-count/sessions/${sessionId}/scan`, headers: auth(adminToken), payload: { barcodeValue: barcodeAtomic, locationId: location.id, quantityDelta: 1, clientScanId: `route-after-complete-${suffix}` } });
@@ -146,6 +167,7 @@ async function main() {
     assert(atomicAfterCompletion.quantity === 20, `rejected post-completion scan changed quantity to ${atomicAfterCompletion.quantity}`);
 
     console.log("Store Count HTTP route validation passed:");
+    console.log("- newly registered unassigned pilot user is provisioned onto the single active organization/site");
     console.log("- concurrent session starts collapse to one ACTIVE session per user/site");
     console.log("- Product API and Store Count resolve the same catalog record");
     console.log("- 20 concurrent unique HTTP scans => quantity 20");
@@ -161,12 +183,14 @@ async function main() {
     }
     if (locationId) await prisma.storeLocation.deleteMany({ where: { id: locationId } });
     if (organizationId) {
+      await prisma.siteMembership.deleteMany({ where: { site: { organizationId } } });
       await prisma.organizationMembership.deleteMany({ where: { organizationId } });
       await prisma.product.deleteMany({ where: { organizationId } });
       await prisma.site.deleteMany({ where: { organizationId } });
       await prisma.organization.deleteMany({ where: { id: organizationId } });
     }
-    if (adminId || userId) await prisma.user.deleteMany({ where: { id: { in: [adminId, userId].filter((id): id is string => Boolean(id)) } } });
+    const cleanupIds = [adminId, userId, unassignedUserId].filter((id): id is string => Boolean(id));
+    if (cleanupIds.length) await prisma.user.deleteMany({ where: { id: { in: cleanupIds } } });
     await app.close();
     await prisma.$disconnect();
   }
