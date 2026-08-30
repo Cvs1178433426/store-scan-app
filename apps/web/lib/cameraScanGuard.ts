@@ -12,3 +12,7 @@ export function shouldAcceptCameraScan(
   if (!previous || previous.value !== value) return true;
   return now - previous.at >= guardMs;
 }
+
+export function shouldUseZxingCamera(retailAssistReady: boolean) {
+  return !retailAssistReady;
+}
