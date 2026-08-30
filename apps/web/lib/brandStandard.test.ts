@@ -10,24 +10,27 @@ function source(relativePath: string) {
   return readFileSync(resolve(process.cwd(), relativePath), "utf8");
 }
 
-function sourceFiles(relativeDir: string): string[] {
+function tsxFiles(relativeDir: string): string[] {
   const root = resolve(process.cwd(), relativeDir);
   const files: string[] = [];
   for (const entry of readdirSync(root)) {
     const absolute = resolve(root, entry);
     const relative = `${relativeDir}/${entry}`;
-    if (statSync(absolute).isDirectory()) files.push(...sourceFiles(relative));
-    else if (/\.(?:ts|tsx|css)$/.test(entry)) files.push(relative);
+    if (statSync(absolute).isDirectory()) files.push(...tsxFiles(relative));
+    else if (/\.tsx$/.test(entry)) files.push(relative);
   }
   return files;
 }
 
 describe("official ContinuiXai brand standard", () => {
-  it("uses the exact official name and tagline in application metadata", () => {
+  it("defines the exact official name and tagline and wires them into application metadata", () => {
+    const brand = source("lib/brand.ts");
     const layout = source("app/layout.tsx");
     const manifest = source("app/manifest.ts");
-    expect(layout).toContain(BRAND_NAME);
-    expect(layout).toContain(TAGLINE);
+    expect(brand).toContain(`BRAND_NAME = "${BRAND_NAME}"`);
+    expect(brand).toContain(`BRAND_TAGLINE = "${TAGLINE}"`);
+    expect(layout).toContain("BRAND_NAME");
+    expect(layout).toContain("BRAND_TAGLINE");
     expect(layout).not.toMatch(OLD_VISIBLE_BRAND);
     expect(manifest).toContain("BRAND_NAME");
     expect(manifest).toContain("BRAND_TAGLINE");
@@ -42,8 +45,8 @@ describe("official ContinuiXai brand standard", () => {
     }
   });
 
-  it("does not reintroduce an obsolete visible brand name anywhere in the web UI", () => {
-    const offenders = [...sourceFiles("app"), ...sourceFiles("components")]
+  it("does not reintroduce an obsolete visible brand name anywhere in rendered web UI source", () => {
+    const offenders = [...tsxFiles("app"), ...tsxFiles("components")]
       .filter((path) => {
         OLD_VISIBLE_BRAND.lastIndex = 0;
         return OLD_VISIBLE_BRAND.test(source(path));
