@@ -7,6 +7,7 @@ import { apiFetch, apiJson, ApiError } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 import { useToast } from "../../lib/toast-context";
 import { createScanHints, SCAN_VIDEO_CONSTRAINTS } from "../../lib/barcodeScanner";
+import { shouldAcceptCameraScan, shouldUseZxingCamera } from "../../lib/cameraScanGuard";
 import { playBeep, unlockBeepAudio } from "../../lib/beep";
 import { buildCountScanPresentation, type CountScanPresentation } from "../../lib/countScanPresentation";
 import { TorchButton } from "../../components/TorchButton";
@@ -25,6 +26,8 @@ import {
 
 const SAME_VALUE_DEBOUNCE_MS = 350;
 const WEDGE_TIMEOUT_MS = 80;
+const CAMERA_SCAN_EVENT = "continuix:camera-scan";
+const RETAIL_SCANNER_READY_EVENT = "continuix:retail-scanner-ready";
 
 type StoreLocation = { id: string; code: string; name: string | null; isActive: boolean };
 type Product = { id: string; name: string; manufacturer: string | null; packageSize: string | null } | null;
@@ -58,6 +61,7 @@ type SummaryResponse = {
   locations: string[];
   rows: SummaryRow[];
 };
+type ScannerWindow = Window & { __continuixRetailScannerReady?: boolean };
 
 export default function StoreCountPage() {
   const router = useRouter();
@@ -66,6 +70,8 @@ export default function StoreCountPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
   const lastScanRef = useRef<{ value: string; at: number } | null>(null);
+  const cameraScanRef = useRef<{ value: string; at: number } | null>(null);
+  const retailAssistReadyRef = useRef(false);
   const busyRef = useRef(false);
   const flushingRef = useRef(false);
   const wedgeBufferRef = useRef("");
@@ -135,6 +141,29 @@ export default function StoreCountPage() {
 
   useEffect(() => {
     if (!session || session.status !== "ACTIVE" || view !== "count") return;
+    retailAssistReadyRef.current = Boolean((window as ScannerWindow).__continuixRetailScannerReady);
+
+    function onRetailScannerReady() {
+      retailAssistReadyRef.current = true;
+    }
+
+    function onCameraScan(event: Event) {
+      const value = (event as CustomEvent<{ value?: string }>).detail?.value;
+      if (value) void handleCameraBarcode(value);
+    }
+
+    window.addEventListener(RETAIL_SCANNER_READY_EVENT, onRetailScannerReady);
+    window.addEventListener(CAMERA_SCAN_EVENT, onCameraScan);
+    return () => {
+      window.removeEventListener(RETAIL_SCANNER_READY_EVENT, onRetailScannerReady);
+      window.removeEventListener(CAMERA_SCAN_EVENT, onCameraScan);
+      cameraScanRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.id, session?.status, locationId, view]);
+
+  useEffect(() => {
+    if (!session || session.status !== "ACTIVE" || view !== "count") return;
     function onKeyDown(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
       if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
@@ -178,8 +207,8 @@ export default function StoreCountPage() {
           { video: SCAN_VIDEO_CONSTRAINTS },
           videoRef.current,
           (result) => {
-            if (!result || cancelled || busyRef.current) return;
-            void handleBarcode(result.getText());
+            if (!result || cancelled || busyRef.current || !shouldUseZxingCamera(retailAssistReadyRef.current)) return;
+            void handleCameraBarcode(result.getText());
           },
         );
         if (cancelled) return controls.stop();
@@ -258,6 +287,14 @@ export default function StoreCountPage() {
 
   async function refreshSession(id: string) {
     try { setSession(await apiJson<CountSession>(`/api/store-count/sessions/${id}`)); } catch { /* best-effort */ }
+  }
+
+  async function handleCameraBarcode(rawValue: string) {
+    const barcode = rawValue.trim();
+    const now = Date.now();
+    if (!shouldAcceptCameraScan(barcode, cameraScanRef.current, now)) return;
+    cameraScanRef.current = { value: barcode, at: now };
+    await handleBarcode(barcode);
   }
 
   async function handleBarcode(rawValue: string, quantityDelta = 1) {
