@@ -11,14 +11,6 @@ const FORMAT_UPC_A = 14;
 const FORMAT_CODE_128 = 4;
 const FORMAT_QR_CODE = 11;
 
-// Keep live decoding responsive enough for hand-held retail use while
-// preserving a longer post-success pause so one barcode is not counted
-// repeatedly from the same camera frame.
-export const ZXING_READER_OPTIONS = {
-  delayBetweenScanAttempts: 100,
-  delayBetweenScanSuccess: 500,
-} as const;
-
 // 해상도를 충분히 높게 요청하고 연속 오토포커스를 명시적으로 요청해 근거리의 작은
 // 바코드도 잘 잡히게 한다. focusMode를 지원하지 않는 기기/브라우저는 이 필드를
 // 그냥 무시하므로 안전하다.
