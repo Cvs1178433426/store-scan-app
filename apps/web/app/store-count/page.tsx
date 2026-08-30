@@ -72,6 +72,7 @@ export default function StoreCountPage() {
   const lastScanRef = useRef<{ value: string; at: number } | null>(null);
   const cameraScanRef = useRef<{ value: string; at: number } | null>(null);
   const retailAssistReadyRef = useRef(false);
+  const locationIdRef = useRef("");
   const busyRef = useRef(false);
   const flushingRef = useRef(false);
   const wedgeBufferRef = useRef("");
@@ -102,6 +103,10 @@ export default function StoreCountPage() {
   useEffect(() => {
     if (!loading && !user) router.push("/login");
   }, [loading, user, router]);
+
+  useEffect(() => {
+    locationIdRef.current = locationId;
+  }, [locationId]);
 
   useEffect(() => {
     if (!user) return;
@@ -299,7 +304,8 @@ export default function StoreCountPage() {
 
   async function handleBarcode(rawValue: string, quantityDelta = 1) {
     const barcode = rawValue.trim();
-    if (!barcode || !user || !session || !locationId || busyRef.current || quantityDelta < 1 || quantityDelta > 999) return;
+    const activeLocationId = locationIdRef.current;
+    if (!barcode || !user || !session || !activeLocationId || busyRef.current || quantityDelta < 1 || quantityDelta > 999) return;
     const now = Date.now();
     if (quantityDelta === 1 && lastScanRef.current?.value === barcode && now - lastScanRef.current.at < SAME_VALUE_DEBOUNCE_MS) return;
     lastScanRef.current = { value: barcode, at: now };
@@ -310,10 +316,10 @@ export default function StoreCountPage() {
     try {
       const entry = await apiJson<CountEntry>(`/api/store-count/sessions/${session.id}/scan`, {
         method: "POST",
-        body: JSON.stringify({ barcodeValue: barcode, locationId, quantityDelta, clientScanId }),
+        body: JSON.stringify({ barcodeValue: barcode, locationId: activeLocationId, quantityDelta, clientScanId }),
       });
       setSession((current) => current ? { ...current, entries: [entry, ...current.entries.filter((existing) => existing.id !== entry.id)] } : current);
-      const selectedLocation = locations.find((location) => location.id === locationId);
+      const selectedLocation = locations.find((location) => location.id === activeLocationId);
       setLastConfirmedScan(buildCountScanPresentation({
         barcodeValue: entry.barcodeValue || barcode,
         quantityAdded: quantityDelta,
@@ -324,7 +330,7 @@ export default function StoreCountPage() {
       }));
       setFlash({ kind: entry.product ? "known" : "unknown", text: entry.product ? `${entry.product.name} — added ${quantityDelta}, ${entry.quantity} here` : `Unknown UPC ${barcode} counted (${quantityDelta}) — add product details later` });
     } catch (error) {
-      enqueueCountScan({ ownerUserId: user.id, sessionId: session.id, locationId, barcodeValue: barcode, quantityDelta }, clientScanId);
+      enqueueCountScan({ ownerUserId: user.id, sessionId: session.id, locationId: activeLocationId, barcodeValue: barcode, quantityDelta }, clientScanId);
       if (error instanceof ApiError && [400, 404, 409].includes(error.status)) {
         markCountScanFailed(clientScanId, error.message || `Server rejected scan (${error.status})`);
         refreshQueueState();
