@@ -111,6 +111,8 @@ jobs:
         run: npx tsx scripts/freshPilotBootstrapValidation.ts
       - name: Exercise the real Store Count HTTP route on PostgreSQL
         run: npx tsx scripts/storeCountRouteValidation.ts
+      - name: Reject accidental completion of an empty Count
+        run: npx tsx scripts/emptyCountCompletionValidation.ts
       - name: Validate commercial tenant and append-only ledger integrity
         run: npx tsx scripts/commercialFoundationValidation.ts
       - name: Validate role-based task scoping and recurrence idempotency
