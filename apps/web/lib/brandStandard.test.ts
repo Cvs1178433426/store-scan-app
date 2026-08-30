@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -8,6 +8,18 @@ const OLD_VISIBLE_BRAND = /Continuixai Ops|CONTINUIXAI OPS|ContinuixAI Ops|CONTI
 
 function source(relativePath: string) {
   return readFileSync(resolve(process.cwd(), relativePath), "utf8");
+}
+
+function sourceFiles(relativeDir: string): string[] {
+  const root = resolve(process.cwd(), relativeDir);
+  const files: string[] = [];
+  for (const entry of readdirSync(root)) {
+    const absolute = resolve(root, entry);
+    const relative = `${relativeDir}/${entry}`;
+    if (statSync(absolute).isDirectory()) files.push(...sourceFiles(relative));
+    else if (/\.(?:ts|tsx|css)$/.test(entry)) files.push(relative);
+  }
+  return files;
 }
 
 describe("official ContinuiXai brand standard", () => {
@@ -28,6 +40,15 @@ describe("official ContinuiXai brand standard", () => {
       expect(text, path).toContain("BrandLockup");
       expect(text, path).not.toMatch(OLD_VISIBLE_BRAND);
     }
+  });
+
+  it("does not reintroduce an obsolete visible brand name anywhere in the web UI", () => {
+    const offenders = [...sourceFiles("app"), ...sourceFiles("components")]
+      .filter((path) => {
+        OLD_VISIBLE_BRAND.lastIndex = 0;
+        return OLD_VISIBLE_BRAND.test(source(path));
+      });
+    expect(offenders).toEqual([]);
   });
 
   it("ships the approved official logo, PWA icons, and approved brand colors", () => {
