@@ -13,9 +13,13 @@ function source(relativePath: string) {
 describe("official ContinuiXai brand standard", () => {
   it("uses the exact official name and tagline in application metadata", () => {
     const layout = source("app/layout.tsx");
+    const manifest = source("app/manifest.ts");
     expect(layout).toContain(BRAND_NAME);
     expect(layout).toContain(TAGLINE);
     expect(layout).not.toMatch(OLD_VISIBLE_BRAND);
+    expect(manifest).toContain("BRAND_NAME");
+    expect(manifest).toContain("BRAND_TAGLINE");
+    expect(manifest).not.toMatch(OLD_VISIBLE_BRAND);
   });
 
   it("uses one shared brand lockup on the primary employee-facing screens", () => {
@@ -26,9 +30,22 @@ describe("official ContinuiXai brand standard", () => {
     }
   });
 
-  it("ships the approved official logo and approved brand colors", () => {
-    expect(existsSync(resolve(process.cwd(), "public/brand/continuixai-mark.svg"))).toBe(true);
-    const css = source("app/globals.css");
+  it("ships the approved official logo, PWA icons, and approved brand colors", () => {
+    for (const path of [
+      "public/brand/continuixai-mark.svg",
+      "public/icons/icon.svg",
+      "public/icons/icon-192.png",
+      "public/icons/icon-512.png",
+      "public/icons/icon-maskable-512.png",
+      "public/icons/apple-touch-icon.png",
+    ]) expect(existsSync(resolve(process.cwd(), path)), path).toBe(true);
+
+    const mark = source("public/brand/continuixai-mark.svg");
+    expect(mark).toContain("#16235A");
+    expect(mark).toContain("#18B5C9");
+    expect(mark).toContain("#F5A623");
+
+    const css = source("app/brand.css");
     expect(css).toContain("--brand-navy: #16235a;");
     expect(css).toContain("--brand-teal: #18b5c9;");
     expect(css).toContain("--brand-amber: #f5a623;");
