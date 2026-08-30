@@ -73,28 +73,34 @@ export function buildSummaryRows(entries: SummaryEntryInput[]): SummaryRow[] {
   );
 }
 
-async function resolveAuthorizedSite(userId: string, requestedSiteId?: string) {
-  const memberships = await prisma.organizationMembership.findMany({
-    where: {
-      userId,
-      isActive: true,
-      organization: { isActive: true },
-    },
-    select: { organizationId: true },
-  });
-  const organizationIds = memberships.map((membership) => membership.organizationId);
+async function resolveAuthorizedSite(userId: string, requestedSiteId?: string, role?: string) {
   const sites = await prisma.site.findMany({
     where: {
       isActive: true,
-      organizationId: { in: organizationIds },
+      organization: {
+        isActive: true,
+        memberships: { some: { userId, isActive: true } },
+      },
+      ...(role === "ADMIN" ? {} : { memberships: { some: { userId, isActive: true } } }),
       ...(requestedSiteId ? { id: requestedSiteId } : {}),
     },
     orderBy: [{ code: "asc" }, { id: "asc" }],
     select: { id: true, organizationId: true },
   });
 
-  if (requestedSiteId) return sites[0] ?? null;
-  if (sites.length === 1) return sites[0];
+  if (requestedSiteId && sites[0]) return sites[0];
+  if (!requestedSiteId && sites.length === 1) return sites[0];
+
+  // Preserve the proven single-site pilot bootstrap: a user with an active
+  // organization membership may be provisioned onto the one unambiguous site.
+  // ensurePilotSiteForUser fails closed once multiple active/assigned sites exist.
+  if (role !== "ADMIN") {
+    const pilotSite = await ensurePilotSiteForUser(userId, role);
+    if (pilotSite && (!requestedSiteId || pilotSite.id === requestedSiteId)) {
+      return { id: pilotSite.id, organizationId: pilotSite.organizationId };
+    }
+  }
+
   return null;
 }
 
@@ -107,7 +113,7 @@ async function assertSessionAccess(
   if (!session) return { ok: false, code: 404, error: "count session not found" };
 
   if (session.siteId) {
-    const site = await resolveAuthorizedSite(userId, session.siteId);
+    const site = await resolveAuthorizedSite(userId, session.siteId, role);
     if (!site && role !== "ADMIN") {
       return { ok: false, code: 403, error: "you do not have access to this count site" };
     }
@@ -173,7 +179,7 @@ export async function storeCountRoutes(app: FastifyInstance) {
     const userId = request.user.sub;
     if (!userId) return reply.code(401).send({ error: "invalid authenticated user" });
 
-    let authorizedSite = await resolveAuthorizedSite(userId, parsed.data.siteId);
+    let authorizedSite = await resolveAuthorizedSite(userId, parsed.data.siteId, request.user.role);
     if (!authorizedSite && !parsed.data.siteId) {
       authorizedSite = await ensurePilotSiteForUser(userId, request.user.role);
     }
@@ -200,7 +206,7 @@ export async function storeCountRoutes(app: FastifyInstance) {
 
   app.get("/sessions/active", async (request) => {
     const userId = request.user.sub;
-    const authorizedSite = await resolveAuthorizedSite(userId);
+    const authorizedSite = await resolveAuthorizedSite(userId, undefined, request.user.role);
     if (authorizedSite) {
       return prisma.storeCountSession.findFirst({
         where: { status: "ACTIVE", siteId: authorizedSite.id },
