@@ -1,14 +1,15 @@
 import type { MetadataRoute } from "next";
+import { BRAND_NAME, BRAND_TAGLINE } from "../lib/brand";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Continuixai Ops",
-    short_name: "Continuixai Ops",
-    description: "Mobile-first operational work management, recurring tasks, store counting, and team oversight.",
+    name: BRAND_NAME,
+    short_name: BRAND_NAME,
+    description: `${BRAND_TAGLINE} Mobile-first retail and wholesale operations, store counting, inventory, and team work management.`,
     start_url: "/my-work",
     display: "standalone",
     background_color: "#ffffff",
-    theme_color: "#1d5fa8",
+    theme_color: "#16235A",
     orientation: "portrait",
     categories: ["business", "productivity", "utilities"],
     icons: [
