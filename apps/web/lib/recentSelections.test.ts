@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { loadRecentIds, pushRecentId } from "./recentSelections";
 
-const KEY = "stash_recent_test";
+const KEY = "continuixai_recent_test";
 
 describe("recentSelections", () => {
   beforeEach(() => {

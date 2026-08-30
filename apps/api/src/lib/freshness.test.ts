@@ -7,7 +7,7 @@ import {
   freshnessThresholdDays,
   freshnessTone,
   isTrustedFresh,
-} from "@stash/shared";
+} from "@continuixai/shared";
 
 const day = 24 * 60 * 60 * 1000;
 

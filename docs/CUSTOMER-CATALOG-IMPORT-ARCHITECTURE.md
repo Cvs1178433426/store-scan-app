@@ -2,7 +2,7 @@
 
 ## Objective
 
-Store Scan must be able to onboard a retailer, wholesaler, distributor, warehouse operator, or inventory service using the customer's existing item master instead of forcing them to rebuild product data manually.
+Continuixai Ops must be able to onboard a retailer, wholesaler, distributor, warehouse operator, or inventory service using the customer's existing item master instead of forcing them to rebuild product data manually.
 
 The onboarding target is:
 
@@ -31,9 +31,9 @@ The import system should be connector-neutral. Phase 1 should support file-based
 - REST APIs
 - Vendor-specific connectors for common POS / ERP / WMS platforms
 
-Direct database access must be read-only and credentialed per customer. Store Scan should never require write access to a customer's operational database for catalog onboarding.
+Direct database access must be read-only and credentialed per customer. Continuixai Ops should never require write access to a customer's operational database for catalog onboarding.
 
-## Canonical Store Scan Product model
+## Canonical Continuixai Ops Product model
 
 Every source maps into one internal canonical representation. Customer column names must never leak into the Store Count engine.
 
@@ -82,11 +82,11 @@ Never modify production data at this stage.
 
 ### 3. Field mapping
 
-Show source columns on the left and Store Scan fields on the right.
+Show source columns on the left and Continuixai Ops fields on the right.
 
 Example:
 
-| Customer column | Store Scan field |
+| Customer column | Continuixai Ops field |
 | --- | --- |
 | ITEM_NO | externalProductKey |
 | UPC_CODE | barcodeValue |
@@ -108,7 +108,7 @@ Profiles may define safe transforms such as:
 - normalize booleans
 - combine description fields
 - derive package size
-- map department codes to Store Scan categories
+- map department codes to Continuixai Ops categories
 - map source active flags
 
 Barcode handling is critical: UPC/EAN/GTIN values are identifiers, not numbers. They must be stored and processed as strings so leading zeros are never lost.
@@ -237,7 +237,7 @@ The system must distinguish:
 1. Same record repeated in the same upload — deduplicate or reject deterministically.
 2. Same external product key with changed product details — update according to profile policy.
 3. Same barcode on two source products — flag collision for review unless the customer explicitly supports barcode aliases/pack levels.
-4. Existing Store Scan Product with matching barcode but different external key — do not silently merge; preview as a collision.
+4. Existing Continuixai Ops Product with matching barcode but different external key — do not silently merge; preview as a collision.
 5. Same barcode in different organizations — allowed after tenant scoping.
 
 ## Large catalog requirements
@@ -302,6 +302,6 @@ Tests must also cover leading-zero barcodes and duplicate/collision behavior.
 
 A sales/support person should be able to tell a prospective customer:
 
-> Send us your current item master or give us a read-only feed. We map it once, preview exactly what will change, load it into your Store Scan catalog, and your employees can start scanning your own merchandise.
+> Send us your current item master or give us a read-only feed. We map it once, preview exactly what will change, load it into your Continuixai Ops catalog, and your employees can start scanning your own merchandise.
 
-That capability is central to making Store Scan adaptable to grocery, pharmacy, beauty, general merchandise, hardware, apparel, wholesale distribution, warehouse operations, and other barcode-based businesses without writing customer-specific versions of the application.
+That capability is central to making Continuixai Ops adaptable to grocery, pharmacy, beauty, general merchandise, hardware, apparel, wholesale distribution, warehouse operations, and other barcode-based businesses without writing customer-specific versions of the application.

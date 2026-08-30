@@ -3,15 +3,15 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-stash}
+      POSTGRES_USER: ${POSTGRES_USER:-continuixai_ops}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-stash}
+      POSTGRES_DB: ${POSTGRES_DB:-continuixai_ops}
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stash}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-continuixai_ops}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,8 +27,9 @@ services:
     volumes:
       - uploads:/app/uploads
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-stash}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-stash}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-continuixai_ops}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-continuixai_ops}
       JWT_SECRET: ${JWT_SECRET}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY}
       NODE_ENV: production
       PORT: "8080"
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost}

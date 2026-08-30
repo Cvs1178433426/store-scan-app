@@ -3,7 +3,7 @@ name: CI
 on:
   workflow_dispatch:
   push:
-    branches: [master, chatgpt-development]
+    branches: [master, chatgpt-development, continuixai-ops-ci-integration]
   pull_request:
     branches: [master, chatgpt-development]
 
@@ -82,18 +82,18 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: store_scan
-          POSTGRES_PASSWORD: store_scan
-          POSTGRES_DB: store_scan_ci
+          POSTGRES_USER: continuixai_ops
+          POSTGRES_PASSWORD: continuixai_ops
+          POSTGRES_DB: continuixai_ops_ci
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U store_scan -d store_scan_ci"
+          --health-cmd="pg_isready -U continuixai_ops -d continuixai_ops_ci"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
     env:
-      DATABASE_URL: postgresql://store_scan:store_scan@localhost:5432/store_scan_ci
+      DATABASE_URL: postgresql://continuixai_ops:continuixai_ops@localhost:5432/continuixai_ops_ci
     defaults:
       run:
         working-directory: apps/api
@@ -128,6 +128,13 @@ jobs:
       - name: Confirm migrated database matches schema.prisma exactly
         run: npx prisma migrate diff --exit-code --from-config-datasource --to-schema=prisma/schema.prisma
 
+      # Run the HTTP route contract first on the freshly migrated database. The
+      # commercial integrity validation intentionally leaves append-only ledger
+      # fixtures behind, which would make the single-tenant pilot provisioning
+      # precondition ambiguous for this route test.
+      - name: Exercise the real Store Count HTTP route on PostgreSQL
+        run: npx tsx scripts/storeCountRouteValidation.ts
+
       - name: Validate commercial tenant and append-only ledger integrity
         run: npx tsx scripts/commercialFoundationValidation.ts
 
@@ -136,6 +143,3 @@ jobs:
 
       - name: Exercise atomic counting and idempotent retries on PostgreSQL
         run: npx tsx scripts/storeCountDbValidation.ts
-
-      - name: Exercise the real Store Count HTTP route on PostgreSQL
-        run: npx tsx scripts/storeCountRouteValidation.ts

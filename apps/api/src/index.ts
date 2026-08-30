@@ -52,6 +52,7 @@ function resolveJwtSecret(): string {
 }
 
 const jwtSecret = resolveJwtSecret();
+const legacyInventoryFeaturesEnabled = process.env.ENABLE_LEGACY_INVENTORY_FEATURES === "true";
 assertMfaEncryptionConfig();
 
 if (isMediaAuthDisabled()) {
@@ -101,9 +102,6 @@ app.get("/health", async () => ({ status: "ok" }));
 
 await app.register(authRoutes, { prefix: "/api/auth" });
 await app.register(mfaRoutes, { prefix: "/api/auth" });
-await app.register(locationRoutes, { prefix: "/api/locations" });
-await app.register(categoryRoutes, { prefix: "/api/categories" });
-await app.register(itemRoutes, { prefix: "/api/items" });
 await app.register(barcodeRoutes, { prefix: "/api" });
 await app.register(publicBarcodeRoutes, { prefix: "/api/barcodes" });
 await app.register(lookupRoutes, { prefix: "/api/lookup" });
@@ -114,19 +112,25 @@ await app.register(storeCountExportRoutes, { prefix: "/api/store-count" });
 await app.register(taskRoutes, { prefix: "/api/tasks" });
 await app.register(attachmentRoutes, { prefix: "/api/attachments" });
 await app.register(mediaAttachmentRoutes, { prefix: "/api/attachments" });
-await app.register(settingsRoutes, { prefix: "/api/settings" });
-await app.register(backupRoutes, { prefix: "/api/backup" });
-await app.register(labelRoutes, { prefix: "/api/labels" });
-await app.register(movementRoutes, { prefix: "/api/movements" });
-await app.register(maintenanceRoutes, { prefix: "/api" });
-await app.register(pushRoutes, { prefix: "/api/push" });
-await app.register(auditRoutes, { prefix: "/api/audit" });
-await app.register(xpRoutes, { prefix: "/api/xp" });
-await app.register(insightsRoutes, { prefix: "/api/insights" });
 
-startExpiryNotificationJob();
-startTrashPurgeJob();
-startLowStockSummaryJob();
+if (legacyInventoryFeaturesEnabled) {
+  app.log.warn("ENABLE_LEGACY_INVENTORY_FEATURES=true: inherited non-pilot inventory features are enabled.");
+  await app.register(locationRoutes, { prefix: "/api/locations" });
+  await app.register(categoryRoutes, { prefix: "/api/categories" });
+  await app.register(itemRoutes, { prefix: "/api/items" });
+  await app.register(settingsRoutes, { prefix: "/api/settings" });
+  await app.register(backupRoutes, { prefix: "/api/backup" });
+  await app.register(labelRoutes, { prefix: "/api/labels" });
+  await app.register(movementRoutes, { prefix: "/api/movements" });
+  await app.register(maintenanceRoutes, { prefix: "/api" });
+  await app.register(pushRoutes, { prefix: "/api/push" });
+  await app.register(auditRoutes, { prefix: "/api/audit" });
+  await app.register(xpRoutes, { prefix: "/api/xp" });
+  await app.register(insightsRoutes, { prefix: "/api/insights" });
+  startExpiryNotificationJob();
+  startTrashPurgeJob();
+  startLowStockSummaryJob();
+}
 
 const port = Number(process.env.PORT ?? 8080);
 app.listen({ port, host: "0.0.0.0" }).catch((err) => { app.log.error(err); process.exit(1); });

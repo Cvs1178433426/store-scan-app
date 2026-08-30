@@ -9,18 +9,18 @@ import { LocaleProvider } from "../lib/i18n/locale-context";
 import { BottomNav } from "../components/BottomNav";
 import { OfflineBanner } from "../components/OfflineBanner";
 
-const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem("stash_theme");if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();`;
+const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem("continuixai_theme");if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();`;
 
 export const metadata: Metadata = {
   title: {
-    default: "Store Scan",
-    template: "%s · Store Scan",
+    default: "Continuixai Ops",
+    template: "%s · Continuixai Ops",
   },
   description: "Mobile-first barcode scanning, product identification, store counting, and inventory organization.",
-  applicationName: "Store Scan",
+  applicationName: "Continuixai Ops",
   appleWebApp: {
     capable: true,
-    title: "Store Scan",
+    title: "Continuixai Ops",
     statusBarStyle: "default",
   },
   formatDetection: {

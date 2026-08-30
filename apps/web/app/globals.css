@@ -1181,3 +1181,171 @@ th {
 .one-time-secrets-confirm input {
   margin-top: 3px;
 }
+
+/* Continuixai Ops work-management surfaces */
+.work-container {
+  max-width: 760px;
+  padding-bottom: 36px;
+}
+
+.work-brand {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+  margin-bottom: 5px;
+}
+
+.work-hero {
+  margin: 2px 0 18px;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  background: var(--color-surface);
+}
+
+.work-hero.compact { padding: 16px 18px; }
+.work-hero h1 { font-size: clamp(1.45rem, 5vw, 2rem); margin: 0 0 6px; line-height: 1.15; }
+.work-hero p { color: var(--color-text-muted); margin: 0; }
+.work-hero-actions, .work-footer-actions, .work-task-actions, .manager-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.work-hero-actions { margin-top: 16px; }
+.work-footer-actions { margin: 20px 0 4px; }
+
+.work-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 11px 16px;
+  border-radius: 10px;
+  text-decoration: none;
+  font-weight: 700;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+}
+.work-link-button.secondary-link {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.work-list { scroll-margin-top: 12px; }
+.work-section { margin: 20px 0; }
+.work-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+}
+.work-section-heading h2 { margin: 0; font-size: 1.05rem; }
+.work-section-heading span {
+  min-width: 28px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--color-surface-hover);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+.work-empty {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--color-border);
+  border-radius: 12px;
+  color: var(--color-text-muted);
+}
+.work-task-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 10px;
+}
+.work-task-card.completed { opacity: 0.82; }
+.work-task-card h3 { margin: 7px 0 6px; font-size: 1.03rem; }
+.work-task-topline { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.work-task-meta { color: var(--color-text-muted); font-size: 0.8rem; text-align: right; }
+.work-priority {
+  display: inline-flex;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--color-surface-hover);
+  color: var(--color-text-muted);
+  font-size: 0.73rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.work-priority.high { background: var(--color-warning-bg); color: var(--color-warning-text); }
+.work-priority.urgent { background: var(--color-danger-bg); color: var(--color-danger-text); }
+.work-task-instructions { color: var(--color-text-secondary); margin: 0 0 10px; white-space: pre-wrap; }
+.work-overdue-note { color: var(--color-danger); font-weight: 800; font-size: 0.84rem; margin: 8px 0; }
+.work-manager-note { padding: 9px 10px; border-radius: 9px; background: var(--color-surface-hover); margin: 8px 0; }
+.work-phi-warning { padding: 10px; margin: 8px 0; border: 1px solid var(--color-warning-border); background: var(--color-warning-bg); color: var(--color-warning-text); border-radius: 10px; font-size: 0.86rem; }
+.work-task-actions { margin: 10px 0; }
+.work-task-actions button { flex: 1; }
+.work-complete-badge { color: var(--color-success); font-weight: 800; }
+.work-note-label { display: grid; gap: 5px; margin-top: 10px; font-size: 0.83rem; font-weight: 700; color: var(--color-text-secondary); }
+.work-note-label textarea { font-weight: 400; }
+.work-summary-row { display: flex; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--color-border); }
+.work-summary-row span { color: var(--color-text-muted); white-space: nowrap; }
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin: 14px 0 20px;
+}
+.summary-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 92px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 10px;
+}
+.summary-stat strong { font-size: 1.65rem; line-height: 1; }
+.summary-stat span { margin-top: 7px; font-size: 0.8rem; color: var(--color-text-muted); }
+
+.manager-container { max-width: 1120px; padding-bottom: 42px; }
+.manager-section { margin: 26px 0; }
+.manager-section-title { display: flex; justify-content: space-between; gap: 12px; align-items: end; margin-bottom: 10px; flex-wrap: wrap; }
+.manager-section-title h2 { margin: 0; font-size: 1.15rem; }
+.manager-section-title p { margin: 3px 0 0; color: var(--color-text-muted); font-size: 0.9rem; }
+.manager-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.manager-card { display: grid; gap: 7px; margin: 0; }
+.manager-card label, .manager-form label, .manager-report-controls label { display: grid; gap: 5px; font-size: 0.82rem; font-weight: 700; color: var(--color-text-secondary); }
+.manager-muted { color: var(--color-text-muted); font-size: 0.82rem; }
+.manager-form { display: grid; gap: 10px; }
+.manager-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 9px; }
+.manager-table-list { display: grid; gap: 8px; }
+.manager-row { display: flex; gap: 14px; justify-content: space-between; align-items: center; margin: 0; }
+.manager-assignment { align-items: stretch; }
+.manager-assignment-main { flex: 1; min-width: 0; }
+.manager-assignment-main p { margin: 7px 0; }
+.manager-assignment-controls { width: min(380px, 42%); display: grid; gap: 7px; }
+.manager-history { margin: 7px 0 0; padding-left: 18px; color: var(--color-text-muted); font-size: 0.8rem; }
+.manager-kpis { display: flex; gap: 9px; flex-wrap: wrap; justify-content: flex-end; color: var(--color-text-muted); font-size: 0.82rem; }
+.manager-report-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 220px)); gap: 10px; justify-content: start; }
+
+@media (min-width: 720px) {
+  .summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 700px) {
+  .manager-row, .manager-assignment { flex-direction: column; align-items: stretch; }
+  .manager-assignment-controls { width: 100%; }
+  .manager-kpis { justify-content: flex-start; }
+  .manager-report-controls { grid-template-columns: 1fr; }
+  .work-hero-actions > *, .work-footer-actions > * { flex: 1 1 140px; }
+}

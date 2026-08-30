@@ -13,7 +13,7 @@ import {
   scanInputSchema,
   type QualityXpItem,
   type XpAward,
-} from "@stash/shared";
+} from "@continuixai/shared";
 import { prisma } from "../lib/prisma.js";
 import { resolveProduct } from "../lib/barcodeLookup/index.js";
 import { fireInventoryWebhook, isInventoryWebhookConfigured } from "../lib/webhook.js";
@@ -191,7 +191,7 @@ export async function itemRoutes(app: FastifyInstance) {
     }
     reply
       .header("Content-Type", "text/csv; charset=utf-8")
-      .header("Content-Disposition", `attachment; filename="stash_items_${new Date().toISOString().slice(0, 10)}.csv"`)
+      .header("Content-Disposition", `attachment; filename="continuixai_ops_items_${new Date().toISOString().slice(0, 10)}.csv"`)
       .send(csv);
   });
 

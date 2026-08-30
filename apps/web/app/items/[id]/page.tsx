@@ -369,8 +369,8 @@ export default function ItemDetailPage() {
           try {
             await apiJson(`/api/items/${id}/restore`, { method: "POST" });
             // 목록은 클라이언트 state라 soft nav만으로는 stale하다.
-            sessionStorage.setItem("stash_items_needs_refresh", "1");
-            window.dispatchEvent(new Event("stash-items-refresh"));
+            sessionStorage.setItem("continuixai_items_needs_refresh", "1");
+            window.dispatchEvent(new Event("continuixai-items-refresh"));
             router.push("/items");
           } catch (err: any) {
             show(t("restoreFailToast", { msg: err.message }), "error");

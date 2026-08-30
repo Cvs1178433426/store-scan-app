@@ -2,7 +2,7 @@ import type { FastifyRequest } from "fastify";
 
 export type ApiLocale = "ko" | "en";
 
-// 프론트엔드가 보내는 X-Locale 헤더(사용자가 앱에서 고른 언어, stash_locale)를 최우선으로
+// 프론트엔드가 보내는 X-Locale 헤더(사용자가 앱에서 고른 언어, continuixai_locale)를 최우선으로
 // 쓴다 — 브라우저의 Accept-Language(OS/브라우저 설정)는 앱 안에서 고른 언어와 다를 수
 // 있어서 신뢰하지 않는다. 헤더가 없거나 "en"이 아니면 이 앱의 기본 언어인 한국어로 본다.
 export function localeFromRequest(request: FastifyRequest): ApiLocale {

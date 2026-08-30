@@ -2,10 +2,10 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Store Scan",
-    short_name: "Store Scan",
-    description: "Mobile-first barcode scanning, product identification, store counting, and inventory organization.",
-    start_url: "/store-count",
+    name: "Continuixai Ops",
+    short_name: "Continuixai Ops",
+    description: "Mobile-first operational work management, recurring tasks, store counting, and team oversight.",
+    start_url: "/my-work",
     display: "standalone",
     background_color: "#ffffff",
     theme_color: "#1d5fa8",
@@ -19,9 +19,9 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       {
-        name: "Start Store Count",
+        name: "Start Count",
         short_name: "Count",
-        description: "Open the continuous store counting scanner.",
+        description: "Open the store counting workflow.",
         url: "/store-count",
         icons: [{ src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
       },

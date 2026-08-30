@@ -83,7 +83,7 @@ export default function StoreLocationsPage() {
   return (
     <main className="container" style={{ maxWidth: 680, paddingBottom: 44 }}>
       <header style={{ marginBottom: 18 }}>
-        <p style={{ margin: 0, opacity: 0.65, fontSize: 12, fontWeight: 800, letterSpacing: ".08em" }}>STORE SCAN</p>
+        <p style={{ margin: 0, opacity: 0.65, fontSize: 12, fontWeight: 800, letterSpacing: ".08em" }}>CONTINUIXAI OPS</p>
         <h1 style={{ margin: "3px 0 6px" }}>Locations</h1>
         <p style={{ margin: 0, opacity: 0.72 }}>Configure the aisles, sections, bins or departments users can select while counting. No free-typed locations during a count.</p>
       </header>

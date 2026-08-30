@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add a simple work-planning layer around Store Scan without slowing down the counting workflow.
+Build Continuixai Ops around a fast counting workflow without slowing down frontline work.
 
 - On sign-in, show a brief time-of-day greeting and the employee's work for today.
 - During the shift, let employees complete assigned work and add short notes.

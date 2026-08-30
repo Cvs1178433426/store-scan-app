@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { pushSubscribeSchema, pushUnsubscribeSchema } from "@stash/shared";
+import { pushSubscribeSchema, pushUnsubscribeSchema } from "@continuixai/shared";
 import { prisma } from "../lib/prisma.js";
 import { generateAndSaveVapidKeys, getVapidPublicKey, isPushConfigured, sendPushToUser } from "../lib/push.js";
 import { t } from "../lib/i18n.js";
@@ -55,7 +55,7 @@ export async function pushRoutes(app: FastifyInstance) {
     if (count === 0) return reply.code(400).send({ error: t("noPushSubscriptions", request.locale) });
 
     await sendPushToUser(request.user.sub, {
-      title: "Stash",
+      title: "Continuixai Ops",
       body: t("testPushBody", request.locale),
       url: "/backup",
     });

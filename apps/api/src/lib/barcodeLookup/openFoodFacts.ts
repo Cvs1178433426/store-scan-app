@@ -26,7 +26,7 @@ export const openFoodFactsProvider: ProductLookupProvider = {
   name: "openfoodfacts",
   async lookup(barcodeValue: string): Promise<ProductLookupResult | null> {
     const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcodeValue}.json`, {
-      headers: { "User-Agent": "store-scan-app" },
+      headers: { "User-Agent": "continuixai-ops" },
     });
     if (!res.ok) return null;
     const data = (await res.json()) as any;

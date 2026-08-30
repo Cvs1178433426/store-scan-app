@@ -81,6 +81,26 @@ export function dueAtForDate(scheduledDate: Date, dueTime: string | null, timeZo
     let instant = new Date(localAsUtc);
     instant = new Date(localAsUtc - timeZoneOffsetMillis(instant, timeZone));
     instant = new Date(localAsUtc - timeZoneOffsetMillis(instant, timeZone));
+
+    // A DST spring-forward can make a requested wall-clock time nonexistent.
+    // Validate the round trip so 02:30 never silently turns into 01:30/03:30.
+    const rendered = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(instant);
+    const parts = Object.fromEntries(rendered.map((part) => [part.type, part.value]));
+    if (
+      Number(parts.year) !== scheduledDate.getUTCFullYear() ||
+      Number(parts.month) !== scheduledDate.getUTCMonth() + 1 ||
+      Number(parts.day) !== scheduledDate.getUTCDate() ||
+      Number(parts.hour) !== Number(match[1]) ||
+      Number(parts.minute) !== Number(match[2])
+    ) return null;
     return instant;
   } catch {
     return null;

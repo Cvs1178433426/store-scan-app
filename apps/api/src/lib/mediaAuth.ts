@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
-export const MEDIA_COOKIE_NAME = "stash_media";
+export const MEDIA_COOKIE_NAME = "continuixai_media";
 /**
  * 미디어 쿠키 수명 — /api/auth/me가 앱 부팅마다 갱신하므로 24h로 둬도 된다.
  * (JWT 7d와 별개; me가 쿠키를 슬라이딩 갱신한다.)
@@ -50,7 +50,7 @@ export function isMediaAuthDisabled(): boolean {
 
 /**
  * 첨부 파일 라우트 인증.
- * stash_media 쿠키(purpose:media) 또는 Authorization Bearer(일반 API 토큰) 필수.
+ * continuixai_media 쿠키(purpose:media) 또는 Authorization Bearer(일반 API 토큰) 필수.
  * 교차 오리진 로컬 개발은 MEDIA_AUTH_DISABLED=true로만 우회한다 — NODE_ENV만으로는 끄지 않는다.
  */
 export async function requireMediaAccess(

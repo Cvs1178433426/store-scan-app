@@ -34,7 +34,7 @@ describe("scanQueue", () => {
   });
 
   it("recovers from corrupted JSON instead of throwing", () => {
-    localStorage.setItem("stash_scan_queue", "{not json");
+    localStorage.setItem("continuixai_count_queue", "{not json");
     expect(getScanQueue()).toEqual([]);
   });
 });

@@ -158,8 +158,8 @@ export async function fireInventoryWebhook(
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (secret) {
       const ts = Math.floor(Date.now() / 1000);
-      headers["X-Stash-Timestamp"] = String(ts);
-      headers["X-Stash-Signature"] = signWebhookBody(secret, ts, body);
+      headers["X-Continuixai-Timestamp"] = String(ts);
+      headers["X-Continuixai-Signature"] = signWebhookBody(secret, ts, body);
     }
 
     try {

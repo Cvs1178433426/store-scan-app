@@ -1,275 +1,223 @@
-# Claude Complete Review Brief — Store Scan
+# Claude Adversarial Review Brief — Continuixai Ops
 
-Repository: <https://github.com/Cvs1178433426/store-scan-app>
+## Mission
 
-Review branch: `chatgpt-development`
+Treat this repository as hostile input and try to prove that Continuixai Ops is **not** ready for a controlled pilot. Do not optimize for politeness. Find reproducible failures, security weaknesses, data-integrity risks, race conditions, confusing frontline UX, and gaps between code and stated behavior.
 
-Open pull request: <https://github.com/Cvs1178433426/store-scan-app/pull/1>
+Do not make broad refactors first. Reproduce findings, identify root cause, and cite exact files/routes/tests. Rank every finding **Critical / Important / Minor** and separate proven defects from hypotheses.
 
-Current reviewed commit must be `6fc31d39e8bb6da446bd3ccae3873e403a6edadb` or newer. State the exact commit SHA you reviewed before giving findings.
+## Product identity
 
-## Your role
+- Company: **Continuixai**
+- Application: **Continuixai Ops**
+- Employee workspace: **My Work**
+- Manager workspace: **Team Work**
+- Inventory counting capability: **Count**
+- `Complete assigned Store Scan` is allowed only as an assignable daily operational task name. It is not the application/product/navigation/report identity.
 
-Act as a skeptical senior application architect, security engineer, PostgreSQL/Prisma reviewer, TypeScript/Fastify/Next.js reviewer, mobile workflow specialist, and retail inventory operations expert.
+Legacy route paths, migration names, storage keys, webhook header names, or repository slugs may remain when changing them would break compatibility. Flag any *user-visible* legacy product branding.
 
-This is an independent second opinion. Do not assume that passing CI proves correctness. Inspect the actual repository content on `chatgpt-development` and challenge its design and implementation.
+## Core architecture to challenge
 
-Do not modify the repository. Return a written review with exact file paths and line references wherever possible.
+Continuixai Ops is a tenant-scoped operational-work application with a separate counting subsystem. Authenticated organization/site membership is the authority for tenant scope. Client-supplied organization/site IDs must never be trusted to broaden access.
 
-## Product goal
+Task templates generate assignment snapshots. Historical assignments must not change when a template changes. Assignment status/reassignment history is append-only. Recurring assignment generation must be idempotent. Site-local timezone is authoritative for daily work, due times, overdue state, daily summaries, and reporting boundaries.
 
-Store Scan is a phone-first and enterprise-handheld-friendly retail inventory/counting application. It must remain simple for nontechnical store employees while supporting reliable counting, product/location management, offline/retry behavior, MFA, account recovery, organizations/sites, commercial inventory foundations, and role-based recurring work tasks.
+The count workflow must remain usable by phone camera and keyboard-wedge handheld scanners. Completed count sessions must not become silently editable through unrelated task work.
 
-The newest foundation adds:
+## Adversarial attack matrix
 
-- six job titles;
-- organization/site-scoped recurring task templates;
-- employee task assignments;
-- manager/administrator task authority;
-- daily/weekly/monthly recurrence;
-- idempotent assignment materialization;
-- site-local due times;
-- database scope guards;
-- snapshot history protection;
-- employee-only self-service task updates.
+### 1. Tenant isolation
 
-The desired next UX phases are documented in `docs/ROLE-BASED-TASKS.md`.
+Attempt cross-organization and cross-site reads/writes for:
 
-## Required review scope
-
-### 1. Repository completeness and build truth
-
-- Confirm the application source is actually present and internally consistent.
-- Verify workspace scripts, Dockerfiles, CI configuration, Prisma generation, migrations, build outputs, and Railway startup commands.
-- Identify differences between what CI proves and what production still does not prove.
-
-### 2. Authentication and account lifecycle
-
-Review:
-
-- registration;
-- login by email or Employee Number;
-- password rules;
-- password hashing;
-- recovery PIN security and rate limiting;
-- mandatory TOTP MFA;
-- MFA secret encryption;
-- backup-code generation and one-time use;
-- JWT purposes, expiry, token versioning, logout, and logout-all;
-- inactive-user behavior;
-- duplicate/race behavior;
-- error information leakage;
-- production secret configuration.
-
-### 3. Authorization and tenant isolation
-
-Attempt to find cross-user, cross-site, cross-organization, or privilege-escalation paths.
-
-Pay special attention to:
-
-- platform `ADMIN` versus organization `OWNER`/`ADMIN`/`MANAGER`;
-- automatic pilot organization/site membership;
-- all Product, StoreLocation, StoreCount, InventoryTransaction, and Task queries;
-- identifiers accepted from request bodies or URL parameters;
-- employee job-title assignment;
-- manager task-template authority;
-- task assignment ownership;
-- inactive memberships;
-- idempotency-key reuse across tenants.
-
-### 4. Store Count correctness
-
-Review the full Store Count lifecycle:
-
-- start/recover/cancel/complete;
-- ownership and site scoping;
-- location validation;
-- atomic repeat scans;
-- idempotent retries;
-- concurrent scans;
-- completed-session immutability;
-- actor attribution;
-- unknown UPC handling and background enrichment;
-- summaries and CSV exports;
-- offline queue/reconciliation;
-- hardware keyboard-wedge scanning;
-- phone-camera scanning and debounce behavior.
-
-Look for any path that can lose a physical scan, count twice, write to the wrong session/location/tenant, or silently produce an inaccurate summary.
-
-### 5. Role-based task foundation
-
-Review:
-
-- `JobTitle`, `TaskTemplate`, and `TaskAssignment` schema design;
-- migration safety and forward compatibility;
-- trigger correctness;
-- organization/site/member scope enforcement;
-- recurrence date math;
-- weekly/monthly edge cases;
-- site time zones and daylight-saving transitions;
-- `createMany(skipDuplicates)` and unique-key behavior;
-- immutable assignment snapshots;
-- employee status/note updates;
-- manager authority;
-- cancellation/reopening gaps;
-- overdue, rollover, and skip behavior not yet implemented;
-- whether the API design safely supports the planned welcome and sign-out screens.
-
-Distinguish defects in implemented Phase 1 from features deliberately deferred to later phases.
-
-### 6. Commercial data foundation
-
-Review:
-
-- Organization, OrganizationMembership, and Site;
-- Product scoping and identifiers;
-- packaging levels and units-of-each;
-- append-only InventoryTransaction behavior;
-- trigger-based integrity protections;
-- default/pilot migration strategy;
-- remaining legacy global uniqueness constraints;
-- readiness for multiple customers with overlapping UPCs and location codes.
-
-### 7. Frontend and user experience
-
-Review for:
-
-- phone usability;
-- accessibility and keyboard behavior;
-- loading/error/success states;
-- blocking dialogs;
-- duplicated or slow network operations;
-- password visibility controls;
-- account-created/Employee Number workflow;
-- MFA QR/backup-code safety;
-- service worker and stale asset risks;
-- offline behavior;
-- confusing inherited home-inventory screens or terminology;
-- English defaults and locale behavior.
-
-### 8. Security and privacy
-
-Inspect for:
-
-- OWASP web/API risks;
-- injection;
-- unsafe file handling;
-- CORS/cookie issues;
-- secrets or tokens in URLs/logs;
-- sensitive error output;
-- brute-force/rate-limit gaps;
-- stored XSS or unsafe external image URLs;
-- dependency/security-audit blind spots;
-- protected health information risks in Pharmacy Team task notes;
-- missing audit trails.
-
-### 9. Reliability, performance, and operations
-
-Review:
-
-- transaction boundaries;
-- race conditions;
-- N+1 or unbounded queries;
-- indexes versus query patterns;
-- connection/startup behavior;
-- migration failure behavior;
-- Railway deployment behavior;
-- backups/recovery;
-- monitoring/logging gaps;
-- response times on low-cost production infrastructure;
-- behavior on weak store Wi-Fi and interrupted cellular connections.
-
-### 10. Test quality
-
-Identify critical behavior that is untested or only superficially tested. Examine whether mocks hide route/database failures.
-
-The current CI claims to cover:
-
-- lint and dependency audit;
-- TypeScript/production builds;
-- unit tests;
-- applying every migration to disposable PostgreSQL;
-- migration status and zero Prisma drift;
-- commercial integrity;
-- task scoping and recurrence idempotency;
-- atomic counting/idempotent retries;
-- real Store Count HTTP routes.
-
-Verify these claims from `.github/workflows/ci.yml` and the validation scripts.
-
-## Required output format
-
-### A. Executive verdict
-
-Choose exactly one:
-
-- `A — ready for controlled pilot`
-- `B — pilot only after listed fixes`
-- `C — not pilot ready`
-- `D/F — unsafe or fundamentally incomplete`
-
-Explain the decision in no more than 250 words.
-
-### B. Findings table
-
-For every genuine finding provide:
-
-1. ID
-2. Severity: Critical / High / Medium / Low
-3. Confidence: High / Medium / Low
-4. Exact file and location
-5. Reproduction or failure scenario
-6. User/business impact
-7. Smallest safe correction
-8. Missing regression test
-
-Do not list speculative possibilities without a concrete code path or clearly labeled uncertainty.
-
-### C. Tenant-isolation matrix
-
-State whether each domain is proven or not proven against cross-tenant reads and writes:
-
-- products;
-- locations;
-- Store Count sessions/entries;
-- scan idempotency/audit;
-- inventory ledger;
+- products and barcodes;
+- store locations;
+- count sessions, entries, exceptions, and exports;
 - task templates;
-- task assignments;
-- user/job-title management.
+- task assignments and notes;
+- task events;
+- reports and CSV exports;
+- employee job-title updates.
 
-### D. No-loss/no-duplicate counting verdict
+Try guessed IDs from another tenant in URL params and request bodies. Verify every write derives scope from authenticated membership. Look for `findUnique` / `update` / `delete` calls that skip organization/site qualification before mutation.
 
-State exactly what is proven and what remains unproven for camera scans, hardware scans, offline retries, concurrent requests, and completed sessions.
+### 2. Authorization
 
-### E. Task-system verdict
+Try employee credentials against every manager endpoint:
 
-Separate:
+- `/api/tasks/employees`
+- `/api/tasks/team`
+- `/api/tasks/templates*`
+- `/api/tasks/assignments*`
+- `/api/tasks/users/:id/job-title`
+- `/api/tasks/reports*`
 
-- implemented Phase 1 defects;
-- intentionally deferred employee UX;
-- intentionally deferred manager UX;
-- required changes before task features are exposed to pilot users.
+Try a manager from Organization A against employee/task IDs from Organization B. Try a disabled membership and inactive user. Verify employees can modify only their own assignments and cannot reopen completed work.
 
-### F. Prioritized correction plan
+### 3. Recurrence and idempotency
 
-Give an ordered list divided into:
+Hammer assignment materialization concurrently for the same employee/date/template. Confirm exactly one assignment exists. Repeat My Work and Team Work requests many times. Test daily, weekly, and monthly boundaries, end dates, February, leap years, monthly day 29/30/31, DST transitions, and site timezones far from UTC.
 
-1. Must fix before any pilot
-2. Must fix before enabling task management
-3. Should fix before broader commercial use
-4. Later improvements
+Verify manager Team Work materializes current/future recurring work for active employees even before those employees open My Work.
 
-### G. Positive evidence
+### 4. Rollover behavior
 
-List the strongest parts that should be preserved, including the exact tests or invariants supporting them.
+For stale OPEN and IN_PROGRESS tasks test:
 
-## Review discipline
+- `REMAIN_OVERDUE` stays visible and keeps original scheduled date;
+- `ROLL_FORWARD` remains actionable without rewriting historical scheduled date;
+- `SKIP` becomes SKIPPED once and records one audit event.
 
-- Inspect code; do not review only this brief or the PR description.
-- Do not repeat outdated findings that current code has already fixed.
-- Do not give credit for a test without verifying what it exercises.
-- Treat existing changes on `chatgpt-development` as intentional unless they are defective.
-- Prefer a small number of reproducible findings over a long generic checklist.
-- End with the exact commit SHA reviewed and the five highest-priority next actions.
+Try repeated/concurrent auto-skip runs and check for duplicate or contradictory events.
+
+### 5. Historical integrity
+
+Edit/deactivate a template after assignments exist. Verify existing assignments preserve snapshotted title, instructions, job title, recurrence, priority, rollover policy, scheduled date, and due timestamp.
+
+Complete, reopen, skip, cancel, note, and reassign tasks. Verify event history records actor and before/after status. For reassignment, verify previous and new assignee IDs are reconstructable. Attempt direct UPDATE/DELETE against `TaskAssignmentEvent`; database triggers should reject mutation.
+
+### 6. Timezone correctness
+
+Use at least America/New_York, America/Los_Angeles, Europe/London, Asia/Tokyo, and Pacific/Auckland. Test around local midnight and DST changes.
+
+Verify:
+
+- greeting matches site-local hour;
+- My Work `date` matches site local date;
+- dueAt is derived correctly;
+- “Completed today” does not disappear because completedAt crosses a UTC date boundary;
+- Daily Summary uses the same local day;
+- daily/weekly/monthly reports use site-local boundaries;
+- manager create/report forms initialize to the site date, not browser UTC date.
+
+### 7. Race conditions
+
+Use concurrent requests for:
+
+- first admin/bootstrap;
+- recurring assignment generation;
+- starter-library install;
+- employee completion vs manager cancellation/reassignment;
+- two managers editing/reassigning the same task;
+- count completion vs late count entry submission;
+- offline queue replay after a retry/timeout.
+
+Look for lost updates, duplicate assignments, duplicate count entries, and audit events that claim a state transition that did not actually win.
+
+### 8. Count correctness
+
+Try duplicate scans, rapid scans, same UPC in different locations, unknown UPCs, reconnect/retry, simultaneous employees, and completed-session mutation. Confirm quantities reconcile exactly with the source scan actions and that retries do not duplicate committed work.
+
+Test both camera-style sequential scanning and keyboard-wedge input. Validate barcode normalization does not merge distinct valid codes.
+
+### 9. Offline/retry behavior
+
+Simulate network failure:
+
+- before request dispatch;
+- after server commit but before response reaches client;
+- during a burst of scans;
+- while navigating away/reloading;
+- during service-worker update.
+
+Replay queued operations repeatedly. The system must not lose or duplicate count work. Verify user-specific cached API data is cleared on logout.
+
+### 10. Frontline usability
+
+Use a narrow phone viewport and a tablet/desktop viewport. Attempt the full employee flow with one hand:
+
+sign in → My Work → start task → note → complete → Count when assigned → Daily Summary → sign out.
+
+Try long task titles/instructions, 50+ tasks, urgent overdue work, slow network, API errors, no job title, no starter library, and no count task. Buttons must remain reachable and state changes must provide understandable feedback.
+
+### 11. Manager usability
+
+Test Team Work on phone, tablet, and desktop. Create/edit/deactivate templates, assign job titles, create one-time work, reassign/complete/reopen/skip/cancel, review history, change report period/date, and export CSV.
+
+Check that no control silently changes another employee/site and that date forms use the site-local date.
+
+### 12. Pharmacy privacy
+
+Verify pharmacy starter work and My Work UI warn users not to enter patient names, prescriptions, diagnoses, dates of birth, or other PHI in task notes. Search for any new feature that encourages PHI storage. Do not use real patient data during testing.
+
+### 13. Authentication and recovery
+
+Attack Employee Number/email login, password policy, recovery flows, MFA/TOTP, backup codes, JWT/session invalidation, logout-everywhere, production secret validation, rate limits, and account enumeration. Confirm MFA issuer is Continuixai Ops and secrets are never logged or returned.
+
+### 14. Branding and compatibility
+
+Search user-facing source and generated metadata for obsolete product identity. Navigation, manifest, page metadata, auth copy, service-worker notification defaults, manager reports, and errors should say Continuixai Ops or Count as appropriate.
+
+Do **not** recommend renaming a legacy route/storage/header solely for aesthetics if that would break installed clients. Distinguish compatibility identifiers from visible branding.
+
+### 15. Migration safety
+
+Apply all migrations to:
+
+1. a fresh empty database;
+2. a representative pre-task database;
+3. a database containing legacy task assignments.
+
+Verify backfills, nullability assumptions, foreign keys, tenant-scope triggers, append-only task-event triggers, indexes, and Prisma schema match. Test rollback/recovery strategy even if migrations are forward-only.
+
+## Required verification commands
+
+Run in a network-enabled clean checkout:
+
+```bash
+npm ci
+npm run prisma:generate
+npm test
+npm run lint
+npm run build
+node scripts/test-task-workflow-pure.cjs
+node scripts/test-task-schedule-pure.cjs
+node scripts/verify-task-route-contract.cjs
+node scripts/test-starter-task-catalog.cjs
+node scripts/test-task-presentation-pure.cjs
+node scripts/verify-work-ui-contract.cjs
+node scripts/verify-continuixai-branding.cjs
+node scripts/verify-continuixai-readiness.cjs
+node scripts/transpile-check.cjs
+```
+
+Also run any existing tenant-integrity, count-integrity, security, and migration verification scripts in `scripts/` and the repository CI workflow.
+
+## Pilot stop conditions
+
+Recommend **NO-GO** if any of these remain:
+
+- cross-tenant data exposure or mutation;
+- employee access to manager-only actions;
+- duplicate/lost count operations under normal retry behavior;
+- duplicate recurring assignments;
+- historical task events can be edited/deleted;
+- completed count records can be silently altered;
+- migration failure on supported upgrade path;
+- timezone bug changes which day work belongs to;
+- critical mobile flow is unusable;
+- production build/tests are not green.
+
+## Deliverable format
+
+Return:
+
+1. **Verdict:** GO / CONDITIONAL GO / NO-GO.
+2. **Critical findings** with exact reproduction and code location.
+3. **Important findings** with exact reproduction and code location.
+4. **Minor findings**.
+5. **Tests you added** and why they fail/pass.
+6. **Security/tenant isolation assessment**.
+7. **Data-integrity/race assessment**.
+8. **Mobile/manager UX assessment**.
+9. **Migration assessment**.
+10. **Exact conditions required before pilot**.
+
+Do not give a GO because the code “looks good.” Require evidence.
+
+## Round 2 remediation-specific attacks
+
+Round 1 found deployment failures, one-time assignment retry duplication, unsynced Count loss on auth invalidation, inherited non-pilot routes, site-isolation fragility, skipped-task invisibility, UTC manager date seeding, missing reassignment UI, nonportable verification scripts, and a manager-nav heuristic. The current archive claims to address those findings. Re-test each claim from first principles; do not accept source-contract scripts as substitutes for HTTP/DB/browser evidence.
+
+The supported pilot surface is auth/MFA, My Work, Team Work, Daily Summary/reporting, Products, Store Locations, Count, and basic account settings. Non-pilot inherited routes must be unreachable with the default environment. If enabling `ENABLE_LEGACY_INVENTORY_FEATURES=true` changes that, treat those features as explicitly out of pilot scope rather than silently approved.

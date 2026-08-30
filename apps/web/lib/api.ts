@@ -6,8 +6,8 @@ function resolveApiUrl(): string {
 
 export const API_URL = resolveApiUrl();
 
-const TOKEN_KEY = "stash_token";
-const LOCALE_KEY = "stash_locale";
+const TOKEN_KEY = "continuixai_token";
+const LOCALE_KEY = "continuixai_locale";
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -35,7 +35,7 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
   if (init.body && !headers.has("Content-Type") && !isFormData) {
     headers.set("Content-Type", "application/json");
   }
-  // Store Scan is English by default. Always send an explicit locale so a fresh device cannot
+  // Continuixai Ops is English by default. Always send an explicit locale so a fresh device cannot
   // accidentally inherit a server-side legacy locale fallback before localStorage is initialized.
   headers.set("X-Locale", currentLocale());
   return fetch(`${API_URL}${path}`, { ...init, headers, cache: "no-store" });

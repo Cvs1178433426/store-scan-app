@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { productInputSchema, productUpdateSchema } from "@stash/shared";
+import { productInputSchema, productUpdateSchema } from "@continuixai/shared";
 import { prisma } from "../lib/prisma.js";
 import { isUniqueConstraintError } from "../lib/prismaErrors.js";
 import { resolveOrganizationContext } from "../lib/organizationContext.js";

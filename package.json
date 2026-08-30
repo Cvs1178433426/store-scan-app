@@ -1,5 +1,5 @@
 {
-  "name": "stash",
+  "name": "continuixai-ops",
   "private": true,
   "version": "0.7.4",
   "workspaces": [

@@ -1,10 +1,10 @@
-# Store Scan Commercial Architecture Direction
+# Continuixai Ops Commercial Architecture Direction
 
 Status: architecture direction for `chatgpt-development`; no production schema changes are authorized by this document alone.
 
 ## Product objective
 
-Store Scan is being developed as a reusable commercial platform for retailers, wholesalers, distributors, warehouses, and inventory-service organizations. The same product should be configurable for a single independent shop or a multi-site operator without maintaining customer-specific forks.
+Continuixai Ops is being developed as a reusable commercial platform for retailers, wholesalers, distributors, warehouses, and inventory-service organizations. The same product should be configurable for a single independent shop or a multi-site operator without maintaining customer-specific forks.
 
 The core operational promise remains unchanged:
 
@@ -20,7 +20,7 @@ Commercial architecture must preserve those guarantees while adding tenant and s
 
 The current schema is still essentially single-installation. `User`, `Product`, `StoreLocation`, and `StoreCountSession` are globally scoped. That is acceptable for proving the counting engine, but it is not sufficient isolation for a commercial multi-customer service.
 
-The inherited home-inventory domain (`Item`, nested `Location`, `AuditSession`, XP/consumer features, etc.) should not become the foundation of the commercial Store Scan domain. Existing functionality must not be removed casually; Store Scan should instead continue separating cleanly until legacy functionality can be deprecated or packaged separately by an explicit product decision.
+The inherited home-inventory domain (`Item`, nested `Location`, `AuditSession`, XP/consumer features, etc.) should not become the foundation of the commercial Continuixai Ops domain. Existing functionality must not be removed casually; Continuixai Ops should instead continue separating cleanly until legacy functionality can be deprecated or packaged separately by an explicit product decision.
 
 ## Target domain hierarchy
 
@@ -71,7 +71,7 @@ Authorization rule: tenant access is established from membership, never from a c
 
 ### Site
 
-A customer may have one or many physical facilities. Use one neutral model so Store Scan works for retail and wholesale operations.
+A customer may have one or many physical facilities. Use one neutral model so Continuixai Ops works for retail and wholesale operations.
 
 Suggested fields:
 
@@ -99,7 +99,7 @@ Do not reuse the inherited nested home-inventory `Location` model.
 
 ### Product catalog
 
-The current dedicated `Product` model remains the Store Scan catalog. For commercial use it must be organization-scoped unless/until a deliberate global-product/master-data design is introduced.
+The current dedicated `Product` model remains the Continuixai Ops catalog. For commercial use it must be organization-scoped unless/until a deliberate global-product/master-data design is introduced.
 
 Target uniqueness for the first commercial version:
 
@@ -190,9 +190,9 @@ Requirements:
 - explicit backfill verification;
 - no change to count quantities during migration.
 
-### Phase 2 — scope Store Scan domain
+### Phase 2 — scope Continuixai Ops domain
 
-Add tenant/site foreign keys to Product, StoreLocation, StoreCountSession and relevant Store Count records. Update every Store Scan query to derive tenant scope from authenticated membership.
+Add tenant/site foreign keys to Product, StoreLocation, StoreCountSession and relevant Store Count records. Update every Continuixai Ops query to derive tenant scope from authenticated membership.
 
 Add cross-tenant denial tests before expanding UI.
 
@@ -280,4 +280,4 @@ The immediate goal is a proven counting engine with clean seams for commercial s
 
 ## Definition of architectural success
 
-The architecture is commercially ready when we can demonstrate with automated integration tests that two independent organizations can coexist in the same deployment, use overlapping UPC/location values, and neither can read or mutate any Store Scan data belonging to the other, while both retain the same no-loss/no-duplicate/offline-safe counting guarantees already established for the single-organization workflow.
+The architecture is commercially ready when we can demonstrate with automated integration tests that two independent organizations can coexist in the same deployment, use overlapping UPC/location values, and neither can read or mutate any Continuixai Ops data belonging to the other, while both retain the same no-loss/no-duplicate/offline-safe counting guarantees already established for the single-organization workflow.

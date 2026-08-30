@@ -1,17 +1,19 @@
 services:
   - type: web
-    name: store-scan-api
+    name: continuixai-ops-api
     runtime: docker
-    branch: chatgpt-development
+    branch: continuixai-ops-completion
     dockerfilePath: ./apps/api/Dockerfile
     dockerCommand: sh -c "npx prisma migrate deploy --config apps/api/prisma.config.ts && node apps/api/dist/index.js"
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: store-scan-db
+          name: continuixai-ops-db
           property: connectionString
       - key: JWT_SECRET
+        generateValue: true
+      - key: MFA_ENCRYPTION_KEY
         generateValue: true
       - key: NODE_ENV
         value: production
@@ -25,15 +27,15 @@ services:
         value: "true"
 
   - type: web
-    name: store-scan-web
+    name: continuixai-ops-web
     runtime: docker
-    branch: chatgpt-development
+    branch: continuixai-ops-completion
     dockerfilePath: ./apps/web/Dockerfile
     envVars:
       - key: API_INTERNAL_URL
         fromService:
           type: web
-          name: store-scan-api
+          name: continuixai-ops-api
           property: hostport
       - key: NODE_ENV
         value: production
@@ -41,6 +43,6 @@ services:
         value: 10000
 
 databases:
-  - name: store-scan-db
+  - name: continuixai-ops-db
     plan: free
     postgresMajorVersion: "17"
