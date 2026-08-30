@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
-import { createScanHints, isQrScanFormat, symbologyFromScanFormat } from "./barcodeScanner";
+import { createScanHints, isQrScanFormat, symbologyFromScanFormat, ZXING_READER_OPTIONS } from "./barcodeScanner";
 
-// Guard hard-coded format mappings against library enum changes.
 describe("barcodeScanner format constants vs @zxing/library", () => {
   it("maps BarcodeFormat enum values to the expected symbology", () => {
     expect(symbologyFromScanFormat(BarcodeFormat.EAN_13)).toBe("EAN13");
@@ -29,5 +28,10 @@ describe("barcodeScanner format constants vs @zxing/library", () => {
       BarcodeFormat.CODE_128,
       BarcodeFormat.QR_CODE,
     ]);
+  });
+
+  it("retries live camera decoding fast enough for handheld retail use", () => {
+    expect(ZXING_READER_OPTIONS.delayBetweenScanAttempts).toBeLessThanOrEqual(150);
+    expect(ZXING_READER_OPTIONS.delayBetweenScanSuccess).toBeGreaterThanOrEqual(300);
   });
 });
