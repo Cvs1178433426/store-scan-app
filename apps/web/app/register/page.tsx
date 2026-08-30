@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { API_URL } from "../../lib/api";
+import { BRAND_NAME } from "../../lib/brand";
+import { BrandLockup } from "../../components/BrandLockup";
 
 const SPECIALS = "!@#$%^&*";
 
@@ -65,7 +67,7 @@ export default function RegisterPage() {
       }
       setCreatedAccount({ employeeNumber: data.employeeNumber, email: data.email });
     } catch {
-      setError("Unable to connect to Continuixai Ops. Please try again.");
+      setError(`Unable to connect to ${BRAND_NAME}. Please try again.`);
     } finally {
       setLoading(false);
     }
@@ -75,8 +77,9 @@ export default function RegisterPage() {
     return (
       <main className="container">
         <section style={{ maxWidth: 560, margin: "32px auto", padding: 24, border: "1px solid var(--color-border)", borderRadius: 16, background: "var(--color-surface)" }}>
+          <div style={{ marginBottom: 24 }}><BrandLockup /></div>
           <h1>Account Created</h1>
-          <p>Your Continuixai Ops account is ready. Save this Employee Number with your Recovery PIN.</p>
+          <p>Your {BRAND_NAME} account is ready. Save this Employee Number with your Recovery PIN.</p>
           <div style={{ margin: "20px 0", padding: 18, borderRadius: 12, background: "var(--color-surface-hover)", textAlign: "center" }}>
             <p style={{ margin: "0 0 6px", fontSize: 14 }}>Your Employee Number</p>
             <strong style={{ fontSize: 24, letterSpacing: "0.04em" }}>{createdAccount.employeeNumber}</strong>
@@ -90,8 +93,9 @@ export default function RegisterPage() {
 
   return (
     <main className="container">
+      <div style={{ margin: "24px 0" }}><BrandLockup /></div>
       <h1>Create a New Account</h1>
-      <p>Continuixai Ops will automatically assign you a unique Employee Number.</p>
+      <p>{BRAND_NAME} will automatically assign you a unique Employee Number.</p>
       <form onSubmit={submit} className="form">
         <input type="text" autoComplete="name" placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} required />
         <input type="email" inputMode="email" autoComplete="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required />
