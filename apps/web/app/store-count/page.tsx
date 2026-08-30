@@ -73,6 +73,7 @@ export default function StoreCountPage() {
   const cameraScanRef = useRef<{ value: string; at: number } | null>(null);
   const retailAssistReadyRef = useRef(false);
   const locationIdRef = useRef("");
+  const pendingCameraScansRef = useRef<string[]>([]);
   const busyRef = useRef(false);
   const flushingRef = useRef(false);
   const wedgeBufferRef = useRef("");
@@ -163,6 +164,7 @@ export default function StoreCountPage() {
       window.removeEventListener(RETAIL_SCANNER_READY_EVENT, onRetailScannerReady);
       window.removeEventListener(CAMERA_SCAN_EVENT, onCameraScan);
       cameraScanRef.current = null;
+      pendingCameraScansRef.current = [];
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id, session?.status, locationId, view]);
@@ -212,7 +214,7 @@ export default function StoreCountPage() {
           { video: SCAN_VIDEO_CONSTRAINTS },
           videoRef.current,
           (result) => {
-            if (!result || cancelled || busyRef.current || !shouldUseZxingCamera(retailAssistReadyRef.current)) return;
+            if (!result || cancelled || !shouldUseZxingCamera(retailAssistReadyRef.current)) return;
             void handleCameraBarcode(result.getText());
           },
         );
@@ -296,6 +298,13 @@ export default function StoreCountPage() {
 
   async function handleCameraBarcode(rawValue: string) {
     const barcode = rawValue.trim();
+    if (!barcode) return;
+    if (busyRef.current) {
+      if (pendingCameraScansRef.current[pendingCameraScansRef.current.length - 1] !== barcode) {
+        pendingCameraScansRef.current.push(barcode);
+      }
+      return;
+    }
     const now = Date.now();
     if (!shouldAcceptCameraScan(barcode, cameraScanRef.current, now)) return;
     cameraScanRef.current = { value: barcode, at: now };
@@ -311,13 +320,13 @@ export default function StoreCountPage() {
     lastScanRef.current = { value: barcode, at: now };
     busyRef.current = true;
     const clientScanId = createCountScanId();
-    playBeep();
-    if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate(45);
     try {
       const entry = await apiJson<CountEntry>(`/api/store-count/sessions/${session.id}/scan`, {
         method: "POST",
         body: JSON.stringify({ barcodeValue: barcode, locationId: activeLocationId, quantityDelta, clientScanId }),
       });
+      playBeep();
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate(45);
       setSession((current) => current ? { ...current, entries: [entry, ...current.entries.filter((existing) => existing.id !== entry.id)] } : current);
       const selectedLocation = locations.find((location) => location.id === activeLocationId);
       setLastConfirmedScan(buildCountScanPresentation({
@@ -341,6 +350,8 @@ export default function StoreCountPage() {
       }
     } finally {
       busyRef.current = false;
+      const nextCameraBarcode = pendingCameraScansRef.current.shift();
+      if (nextCameraBarcode) void handleCameraBarcode(nextCameraBarcode);
       window.setTimeout(() => setFlash(null), 1600);
     }
   }
