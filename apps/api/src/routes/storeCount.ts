@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma.js";
 import { isUniqueConstraintError } from "../lib/prismaErrors.js";
 import { resolveProduct } from "../lib/barcodeLookup/index.js";
 import { matchExistingCategory } from "../lib/barcodeLookup/categoryMatch.js";
+import { ensurePilotSiteForUser } from "../lib/pilotSite.js";
 
 const createSessionSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
@@ -172,7 +173,10 @@ export async function storeCountRoutes(app: FastifyInstance) {
     const userId = request.user.sub;
     if (!userId) return reply.code(401).send({ error: "invalid authenticated user" });
 
-    const authorizedSite = await resolveAuthorizedSite(userId, parsed.data.siteId);
+    let authorizedSite = await resolveAuthorizedSite(userId, parsed.data.siteId);
+    if (!authorizedSite && !parsed.data.siteId) {
+      authorizedSite = await ensurePilotSiteForUser(userId, request.user.role);
+    }
     if (!authorizedSite) {
       if (parsed.data.siteId) return reply.code(403).send({ error: "you do not have access to that site" });
       return reply.code(400).send({ error: "select an authorized site before starting a count" });
