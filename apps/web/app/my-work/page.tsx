@@ -8,6 +8,7 @@ import { useAuth } from "../../lib/auth-context";
 import { useToast } from "../../lib/toast-context";
 import { countTaskActionLabel, greetingForTimeZone, groupAssignments, humanizeEnum, isCountTask } from "../../lib/taskPresentation";
 import type { MyWorkResponse, TaskAssignment, TaskStatus } from "../../lib/types";
+import { BrandLockup } from "../../components/BrandLockup";
 
 function formatSiteDate(date: string, timeZone: string): string {
   try {
@@ -156,7 +157,7 @@ export default function MyWorkPage() {
   return (
     <main className="container work-container">
       <header className="work-hero">
-        <div className="work-brand">Continuixai Ops</div>
+        <BrandLockup compact />
         {data ? (
           <>
             <h1>{greetingForTimeZone(user.name, new Date(), data.site.timeZone)}</h1>
