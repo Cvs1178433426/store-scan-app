@@ -6,12 +6,18 @@ import { loadRetailScanner, retailDecodeConfig } from "../lib/scannerEngine";
 const FRAME_INTERVAL_MS = 280;
 const REARM_AFTER_MISSING_MS = 1500;
 const FRAME_MAX_WIDTH = 960;
+const CAMERA_SCAN_EVENT = "continuix:camera-scan";
+const RETAIL_SCANNER_READY_EVENT = "continuix:retail-scanner-ready";
 
-function emitAsScannerWedge(value: string) {
-  for (const character of value) {
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: character, bubbles: true }));
-  }
-  window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+type ScannerWindow = Window & { __continuixRetailScannerReady?: boolean };
+
+function emitCameraBarcode(value: string) {
+  window.dispatchEvent(new CustomEvent(CAMERA_SCAN_EVENT, { detail: { value } }));
+}
+
+function markRetailScannerReady() {
+  (window as ScannerWindow).__continuixRetailScannerReady = true;
+  window.dispatchEvent(new Event(RETAIL_SCANNER_READY_EVENT));
 }
 
 function captureFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
@@ -38,6 +44,7 @@ export function RetailScannerAssist() {
     if (typeof window === "undefined") return;
     let cancelled = false;
     let timer: ReturnType<typeof setInterval> | null = null;
+    let readyMarked = false;
     const canvas = document.createElement("canvas");
 
     void (async () => {
@@ -54,6 +61,10 @@ export function RetailScannerAssist() {
         if (cancelled || decodingRef.current || window.location.pathname !== "/store-count") return;
         const video = document.querySelector<HTMLVideoElement>(".scanner-frame video");
         if (!video || !video.srcObject) return;
+        if (!readyMarked) {
+          markRetailScannerReady();
+          readyMarked = true;
+        }
 
         const frame = captureFrame(video, canvas);
         if (!frame) return;
@@ -76,7 +87,7 @@ export function RetailScannerAssist() {
           lastSeenRef.current = { value, at: now };
           if (armedValueRef.current === value) return;
           armedValueRef.current = value;
-          emitAsScannerWedge(value);
+          emitCameraBarcode(value);
         });
       }, FRAME_INTERVAL_MS);
     })();
@@ -87,6 +98,7 @@ export function RetailScannerAssist() {
       decodingRef.current = false;
       lastSeenRef.current = null;
       armedValueRef.current = null;
+      (window as ScannerWindow).__continuixRetailScannerReady = false;
     };
   }, []);
 
