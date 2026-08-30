@@ -11,6 +11,7 @@ async function main() {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const email = `fresh-pilot-${suffix}@example.test`;
 
+  // This must run against the pristine post-migration database, before any fixture tenant exists.
   const existingOrganizations = await prisma.organization.count({ where: { isActive: true } });
   const existingSites = await prisma.site.count({ where: { isActive: true } });
   assert(existingOrganizations === 0 && existingSites === 0, "fresh pilot bootstrap validation must run before tenant fixtures are created");
