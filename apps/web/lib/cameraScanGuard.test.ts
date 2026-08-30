@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldAcceptCameraScan } from "./cameraScanGuard";
+import { shouldAcceptCameraScan, shouldUseZxingCamera } from "./cameraScanGuard";
 
 describe("shouldAcceptCameraScan", () => {
   it("accepts the first camera read", () => {
@@ -16,5 +16,12 @@ describe("shouldAcceptCameraScan", () => {
 
   it("allows the same UPC again after the camera guard interval", () => {
     expect(shouldAcceptCameraScan("123456789012", { value: "123456789012", at: 1000 }, 2050)).toBe(true);
+  });
+});
+
+describe("camera engine selection", () => {
+  it("uses ZXing only while the retail assist is unavailable", () => {
+    expect(shouldUseZxingCamera(false)).toBe(true);
+    expect(shouldUseZxingCamera(true)).toBe(false);
   });
 });
