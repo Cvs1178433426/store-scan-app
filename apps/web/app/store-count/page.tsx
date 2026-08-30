@@ -8,6 +8,7 @@ import { useAuth } from "../../lib/auth-context";
 import { useToast } from "../../lib/toast-context";
 import { createScanHints, SCAN_VIDEO_CONSTRAINTS } from "../../lib/barcodeScanner";
 import { playBeep, unlockBeepAudio } from "../../lib/beep";
+import { buildCountScanPresentation, type CountScanPresentation } from "../../lib/countScanPresentation";
 import { TorchButton } from "../../components/TorchButton";
 import {
   clearCountQueueForSession,
@@ -84,6 +85,7 @@ export default function StoreCountPage() {
   const [pendingCount, setPendingCount] = useState(0);
   const [failedScans, setFailedScans] = useState<QueuedCountScan[]>([]);
   const [flash, setFlash] = useState<{ kind: "known" | "unknown" | "queued" | "error"; text: string } | null>(null);
+  const [lastConfirmedScan, setLastConfirmedScan] = useState<CountScanPresentation | null>(null);
   const [exporting, setExporting] = useState(false);
 
   function refreshQueueState() {
@@ -274,6 +276,15 @@ export default function StoreCountPage() {
         body: JSON.stringify({ barcodeValue: barcode, locationId, quantityDelta, clientScanId }),
       });
       setSession((current) => current ? { ...current, entries: [entry, ...current.entries.filter((existing) => existing.id !== entry.id)] } : current);
+      const selectedLocation = locations.find((location) => location.id === locationId);
+      setLastConfirmedScan(buildCountScanPresentation({
+        barcodeValue: entry.barcodeValue || barcode,
+        quantityAdded: quantityDelta,
+        currentQuantity: entry.quantity,
+        productName: entry.product?.name ?? null,
+        locationCode: selectedLocation?.code ?? entry.location.code,
+        locationName: selectedLocation?.name ?? null,
+      }));
       setFlash({ kind: entry.product ? "known" : "unknown", text: entry.product ? `${entry.product.name} — added ${quantityDelta}, ${entry.quantity} here` : `Unknown UPC ${barcode} counted (${quantityDelta}) — add product details later` });
     } catch (error) {
       enqueueCountScan({ ownerUserId: user.id, sessionId: session.id, locationId, barcodeValue: barcode, quantityDelta }, clientScanId);
@@ -358,6 +369,7 @@ export default function StoreCountPage() {
       refreshQueueState();
       setSession(null);
       setSummary(null);
+      setLastConfirmedScan(null);
       setView("count");
     } catch (error) { show(error instanceof Error ? error.message : "Could not cancel count.", "error"); }
   }
@@ -406,6 +418,16 @@ export default function StoreCountPage() {
             {!cameraError && <div className="scanner-overlay"><div className="scan-box"><span className="corner tl" /><span className="corner tr" /><span className="corner bl" /><span className="corner br" /><span className="scan-line" /></div></div>}
             {torchSupported && <TorchButton active={torchOn} onClick={() => void toggleTorch()} label={torchOn ? "Turn flash off" : "Turn flash on"} />}
           </div>
+          {lastConfirmedScan && <section className="card" aria-live="polite" style={{ margin: "10px 0", padding: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.66, letterSpacing: ".06em" }}>{lastConfirmedScan.known ? "LAST ITEM COUNTED" : "UNKNOWN UPC COUNTED"}</div>
+            <div style={{ fontSize: 19, fontWeight: 900, marginTop: 3 }}>{lastConfirmedScan.title}</div>
+            <div style={{ marginTop: 6, fontSize: 13 }}><strong>UPC:</strong> {lastConfirmedScan.upc}</div>
+            <div style={{ marginTop: 3, fontSize: 13 }}><strong>Location:</strong> {lastConfirmedScan.location}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+              <div><div style={{ fontSize: 11, opacity: 0.65 }}>ADDED</div><strong style={{ fontSize: 20 }}>+{lastConfirmedScan.added}</strong></div>
+              <div><div style={{ fontSize: 11, opacity: 0.65 }}>TOTAL HERE</div><strong style={{ fontSize: 20 }}>{lastConfirmedScan.current}</strong></div>
+            </div>
+          </section>}
           <div style={{ textAlign: "center", margin: "10px 0 12px", minHeight: 42, fontWeight: flash ? 800 : 500 }}>{flash ? flash.text : currentLocation ? `Ready at ${currentLocation.code} · camera or handheld trigger` : "Configure and select a location first"}</div>
           <form onSubmit={handleManualSubmit} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 88px auto", gap: 8 }}>
             <input inputMode="numeric" value={manualValue} onChange={(event) => setManualValue(event.target.value)} placeholder="Manual UPC" aria-label="Manual UPC" style={{ minWidth: 0, minHeight: 48 }} />
