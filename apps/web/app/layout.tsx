@@ -8,6 +8,7 @@ import { ThemeProvider } from "../lib/theme-context";
 import { LocaleProvider } from "../lib/i18n/locale-context";
 import { BottomNav } from "../components/BottomNav";
 import { OfflineBanner } from "../components/OfflineBanner";
+import { RetailScannerAssist } from "../components/RetailScannerAssist";
 
 const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem("continuixai_theme");if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();`;
 
@@ -51,6 +52,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body>
         <RegisterServiceWorker />
+        <RetailScannerAssist />
         <LocaleProvider>
           <ThemeProvider>
             <ToastProvider>
