@@ -88,8 +88,19 @@ async function resolveAuthorizedSite(userId: string, requestedSiteId?: string, r
     select: { id: true, organizationId: true },
   });
 
-  if (requestedSiteId) return sites[0] ?? null;
-  if (sites.length === 1) return sites[0];
+  if (requestedSiteId && sites[0]) return sites[0];
+  if (!requestedSiteId && sites.length === 1) return sites[0];
+
+  // Preserve the proven single-site pilot bootstrap: a user with an active
+  // organization membership may be provisioned onto the one unambiguous site.
+  // ensurePilotSiteForUser fails closed once multiple active/assigned sites exist.
+  if (role !== "ADMIN") {
+    const pilotSite = await ensurePilotSiteForUser(userId, role);
+    if (pilotSite && (!requestedSiteId || pilotSite.id === requestedSiteId)) {
+      return { id: pilotSite.id, organizationId: pilotSite.organizationId };
+    }
+  }
+
   return null;
 }
 
