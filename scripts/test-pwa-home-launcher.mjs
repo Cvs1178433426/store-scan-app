@@ -19,10 +19,10 @@ assert(home.includes("user.name"), "Home greeting must derive the user's name fr
 assert(home.includes("getHours()"), "Home greeting must derive its daypart from local browser time");
 assert(home.includes("ready to start working?"), "Home must present the approved ready-to-work greeting");
 assert(!home.includes("Mitchell"), "Home must never hard-code a user's name");
-assert(home.includes('router.replace("/login")'), "Unauthenticated Home must route to sign-in");
+assert(home.includes("Welcome to ContinuiXai"), "Unauthenticated Home must present a clear ContinuiXai welcome message");
+assert(home.includes('href="/login"'), "Unauthenticated Home must provide a direct Sign In action");
+assert(home.includes(">Sign In<"), "Unauthenticated Home must label the primary action Sign In");
 
-assert(login.includes("Welcome to"), "The sign-in experience must present a clear ContinuiXai welcome message");
-assert(login.includes(">Sign In<"), "The sign-in experience must expose a clear Sign In action");
 assert((login.match(/router\.push\("\/"\)/g) || []).length >= 2, "Both successful MFA paths must route to Home");
 assert(!login.includes('router.push("/store-count")'), "Successful MFA must not bypass Home and route directly to Count");
 
