@@ -1,8 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { BrandLockup } from "../components/BrandLockup";
 import { useAuth } from "../lib/auth-context";
 
@@ -20,19 +18,27 @@ function daypart(hour: number) {
 }
 
 export default function HomePage() {
-  const router = useRouter();
   const { user, loading, logout } = useAuth();
 
-  useEffect(() => {
-    if (!loading && !user) router.replace("/login");
-  }, [loading, router, user]);
-
-  if (loading || !user) {
+  if (loading) {
     return (
       <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
         <section style={{ textAlign: "center" }}>
           <BrandLockup />
           <p style={{ color: "var(--color-text-muted)", marginTop: 18 }}>Connecting securely...</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return (
+      <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
+        <section style={{ width: "100%", maxWidth: 470, textAlign: "center", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: 22, padding: "36px 26px", boxShadow: "0 10px 30px rgba(0,0,0,0.08)" }}>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 26 }}><BrandLockup /></div>
+          <h1 style={{ fontSize: 30, lineHeight: 1.15, margin: "0 0 12px" }}>Welcome to ContinuiXai</h1>
+          <p style={{ color: "var(--color-text-secondary)", fontSize: 16, lineHeight: 1.5, margin: "0 0 26px" }}>Smarter store operations, inventory, and teamwork.</p>
+          <Link href="/login" className="button" style={{ minHeight: 50, display: "grid", placeItems: "center", textDecoration: "none", fontSize: 17 }}>Sign In</Link>
         </section>
       </main>
     );
