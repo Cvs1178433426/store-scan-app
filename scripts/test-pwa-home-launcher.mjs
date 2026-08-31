@@ -3,6 +3,7 @@ import fs from "node:fs";
 const home = fs.readFileSync(new URL("../apps/web/app/page.tsx", import.meta.url), "utf8");
 const login = fs.readFileSync(new URL("../apps/web/app/login/page.tsx", import.meta.url), "utf8");
 const manifest = fs.readFileSync(new URL("../apps/web/app/manifest.ts", import.meta.url), "utf8");
+const serviceWorker = fs.readFileSync(new URL("../apps/web/public/sw.js", import.meta.url), "utf8");
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -29,5 +30,9 @@ assert(!login.includes('router.push("/store-count")'), "Successful MFA must not 
 assert(manifest.includes('start_url: "/"'), "Installed PWA must launch through Home");
 assert(manifest.includes('scope: "/"'), "Installed PWA must remain scoped to the ContinuiXai application");
 assert(manifest.includes('display: "standalone"'), "Installed PWA must use standalone display mode");
+
+assert(fs.existsSync(new URL("../apps/web/public/apple-touch-icon.png", import.meta.url)), "iOS must have the conventional root /apple-touch-icon.png fallback");
+assert(serviceWorker.includes('request.destination === "manifest"'), "Service worker must bypass manifest requests used by installation");
+assert(serviceWorker.includes('request.destination === "image"'), "Service worker must bypass PWA icon/image requests used by installation");
 
 console.log("PWA Home launcher regression checks passed.");
