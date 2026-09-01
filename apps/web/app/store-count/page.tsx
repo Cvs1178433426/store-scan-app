@@ -8,6 +8,7 @@ import { useAuth } from "../../lib/auth-context";
 import { useToast } from "../../lib/toast-context";
 import { createScanHints, SCAN_VIDEO_CONSTRAINTS } from "../../lib/barcodeScanner";
 import { shouldAcceptCameraScan, shouldUseZxingCamera } from "../../lib/cameraScanGuard";
+import { describeScannerStatus, markCameraReady, readRetailScannerStatus, type ScannerStatus } from "../../lib/scannerEngine";
 import { playBeep, unlockBeepAudio } from "../../lib/beep";
 import { buildCountScanPresentation, type CountScanPresentation } from "../../lib/countScanPresentation";
 import { TorchButton } from "../../components/TorchButton";
@@ -29,6 +30,8 @@ const SAME_VALUE_DEBOUNCE_MS = 350;
 const WEDGE_TIMEOUT_MS = 80;
 const CAMERA_SCAN_EVENT = "continuix:camera-scan";
 const RETAIL_SCANNER_READY_EVENT = "continuix:retail-scanner-ready";
+const RETAIL_SCANNER_LOADED_EVENT = "continuix:retail-scanner-loaded";
+const RETAIL_SCANNER_FAILED_EVENT = "continuix:retail-scanner-failed";
 
 type StoreLocation = { id: string; code: string; name: string | null; isActive: boolean };
 type Product = { id: string; name: string; manufacturer: string | null; packageSize: string | null } | null;
@@ -87,6 +90,7 @@ export default function StoreCountPage() {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [initializing, setInitializing] = useState(true);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [scannerStatus, setScannerStatus] = useState<ScannerStatus>("starting");
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [manualValue, setManualValue] = useState("");
@@ -149,10 +153,16 @@ export default function StoreCountPage() {
   useEffect(() => {
     if (!session || session.status !== "ACTIVE" || view !== "count") return;
     retailAssistReadyRef.current = Boolean((window as ScannerWindow).__continuixRetailScannerReady);
+    const persistedScannerStatus = readRetailScannerStatus(window);
+    if (persistedScannerStatus) setScannerStatus(persistedScannerStatus);
 
     function onRetailScannerReady() {
       retailAssistReadyRef.current = true;
+      setScannerStatus("retail");
     }
+
+    function onRetailScannerLoaded() { setScannerStatus("retail"); }
+    function onRetailScannerFailed() { setScannerStatus("fallback"); }
 
     function onCameraScan(event: Event) {
       const value = (event as CustomEvent<{ value?: string }>).detail?.value;
@@ -160,9 +170,13 @@ export default function StoreCountPage() {
     }
 
     window.addEventListener(RETAIL_SCANNER_READY_EVENT, onRetailScannerReady);
+    window.addEventListener(RETAIL_SCANNER_LOADED_EVENT, onRetailScannerLoaded);
+    window.addEventListener(RETAIL_SCANNER_FAILED_EVENT, onRetailScannerFailed);
     window.addEventListener(CAMERA_SCAN_EVENT, onCameraScan);
     return () => {
       window.removeEventListener(RETAIL_SCANNER_READY_EVENT, onRetailScannerReady);
+      window.removeEventListener(RETAIL_SCANNER_LOADED_EVENT, onRetailScannerLoaded);
+      window.removeEventListener(RETAIL_SCANNER_FAILED_EVENT, onRetailScannerFailed);
       window.removeEventListener(CAMERA_SCAN_EVENT, onCameraScan);
       cameraScanRef.current = null;
       pendingCameraScansRef.current = [];
@@ -221,6 +235,8 @@ export default function StoreCountPage() {
         );
         if (cancelled) return controls.stop();
         controlsRef.current = controls;
+        setCameraError(null);
+        setScannerStatus(markCameraReady);
         const stream = videoRef.current?.srcObject;
         if (stream instanceof MediaStream) setTorchSupported(BrowserCodeReader.mediaStreamIsTorchCompatible(stream));
       } catch (error) {
@@ -237,6 +253,7 @@ export default function StoreCountPage() {
       controlsRef.current?.stop();
       controlsRef.current = null;
       setTorchOn(false);
+      setScannerStatus("starting");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id, session?.status, view]);
@@ -483,7 +500,7 @@ export default function StoreCountPage() {
               <div><div style={{ fontSize: 11, opacity: 0.65 }}>TOTAL HERE</div><strong style={{ fontSize: 20 }}>{lastConfirmedScan.current}</strong></div>
             </div>
           </section>}
-          <div style={{ textAlign: "center", margin: "10px 0 12px", minHeight: 42, fontWeight: flash ? 800 : 500 }}>{flash ? flash.text : currentLocation ? `Ready at ${currentLocation.code} · camera or handheld trigger` : "Configure and select a location first"}</div>
+          <div aria-live="polite" style={{ textAlign: "center", margin: "10px 0 12px", minHeight: 42, fontWeight: flash ? 800 : 500 }}>{flash ? flash.text : currentLocation ? describeScannerStatus(scannerStatus, currentLocation.code) : "Configure and select a location first"}</div>
           <form onSubmit={handleManualSubmit} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 88px auto", gap: 8 }}>
             <input inputMode="numeric" value={manualValue} onChange={(event) => setManualValue(event.target.value)} placeholder="Manual UPC" aria-label="Manual UPC" style={{ minWidth: 0, minHeight: 48 }} />
             <input inputMode="numeric" type="number" min={1} max={999} step={1} value={manualQuantity} onChange={(event) => setManualQuantity(event.target.value)} aria-label="Quantity" title="Quantity" style={{ minWidth: 0, minHeight: 48, textAlign: "center" }} />
