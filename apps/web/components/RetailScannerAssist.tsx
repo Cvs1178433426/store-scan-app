@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { loadRetailScanner, retailDecodeConfig } from "../lib/scannerEngine";
+import { loadRetailScanner, publishRetailScannerStatus, retailDecodeConfig } from "../lib/scannerEngine";
 
 const FRAME_INTERVAL_MS = 280;
 const REARM_AFTER_MISSING_MS = 1500;
@@ -52,10 +52,11 @@ export function RetailScannerAssist() {
       try {
         quagga = await loadRetailScanner();
       } catch {
-        // The existing ZXing path remains the fallback if the retail decoder cannot load.
+        publishRetailScannerStatus(window, "fallback");
         return;
       }
       if (cancelled) return;
+      publishRetailScannerStatus(window, "retail");
 
       timer = setInterval(() => {
         if (cancelled || decodingRef.current || window.location.pathname !== "/store-count") return;

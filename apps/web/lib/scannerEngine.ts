@@ -12,12 +12,32 @@ declare global {
   }
 }
 
-const QUAGGA_URLS = [
-  "https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.12.1/dist/quagga.min.js",
-  "https://unpkg.com/@ericblade/quagga2@1.12.1/dist/quagga.min.js",
-] as const;
-
 let loadPromise: Promise<QuaggaApi> | null = null;
+
+export type ScannerStatus = "starting" | "ready" | "retail" | "fallback";
+export type RetailScannerStatus = Extract<ScannerStatus, "retail" | "fallback">;
+type RetailScannerStatusTarget = EventTarget & { __continuixRetailScannerStatus?: RetailScannerStatus };
+
+export function publishRetailScannerStatus(target: RetailScannerStatusTarget, status: RetailScannerStatus) {
+  target.__continuixRetailScannerStatus = status;
+  target.dispatchEvent(new Event(`continuix:retail-scanner-${status === "retail" ? "loaded" : "failed"}`));
+}
+
+export function readRetailScannerStatus(target: RetailScannerStatusTarget) {
+  return target.__continuixRetailScannerStatus;
+}
+
+export function markCameraReady(status: ScannerStatus): ScannerStatus {
+  return status === "starting" ? "ready" : status;
+}
+
+export function describeScannerStatus(state: ScannerStatus, locationCode?: string) {
+  const location = locationCode ? ` at ${locationCode}` : "";
+  if (state === "starting") return `Starting camera${location}…`;
+  if (state === "retail") return `Retail scanner ready${location} · aim the barcode inside the box`;
+  if (state === "fallback") return `Backup scanner active${location} · aim the barcode inside the box`;
+  return `Camera ready${location} · aim the barcode inside the box`;
+}
 
 export function retailDecodeConfig(src: string) {
   return {
@@ -53,43 +73,17 @@ export function shouldEmitRetailScan(
   return !previous || previous.value !== value || now - previous.at >= quietMs;
 }
 
-async function loadFrom(url: string): Promise<QuaggaApi> {
-  if (window.Quagga) return window.Quagga;
-  await new Promise<void>((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>(`script[data-continuix-quagga="${url}"]`);
-    if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Quagga script failed to load")), { once: true });
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = url;
-    script.async = true;
-    script.crossOrigin = "anonymous";
-    script.dataset.continuixQuagga = url;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Quagga script failed to load"));
-    document.head.appendChild(script);
-  });
-  if (!window.Quagga) throw new Error("Quagga loaded without exposing its API");
-  return window.Quagga;
-}
-
 export function loadRetailScanner(): Promise<QuaggaApi> {
   if (typeof window === "undefined") return Promise.reject(new Error("Scanner requires a browser"));
   if (window.Quagga) return Promise.resolve(window.Quagga);
   if (loadPromise) return loadPromise;
 
   loadPromise = (async () => {
-    let lastError: unknown;
-    for (const url of QUAGGA_URLS) {
-      try {
-        return await loadFrom(url);
-      } catch (error) {
-        lastError = error;
-      }
-    }
-    throw lastError instanceof Error ? lastError : new Error("Retail scanner could not load");
+    const scannerBundle = await import("@ericblade/quagga2");
+    const scanner = (scannerBundle.default ?? scannerBundle) as unknown as QuaggaApi;
+    if (typeof scanner.decodeSingle !== "function") throw new Error("Retail scanner loaded without its decode API");
+    window.Quagga = scanner;
+    return scanner;
   })();
 
   return loadPromise;
