@@ -1,12 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
-import { API_URL } from "../../lib/api";
-import { BRAND_NAME } from "../../lib/brand";
+import { useEffect, useReducer, useRef, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { BrandLockup } from "../../components/BrandLockup";
+import { VerificationCodeForm } from "../../components/VerificationCodeForm";
+import { ApiError, apiJson } from "../../lib/api";
+import { createAuthFlow, formatWaitTime, reduceAuthFlow } from "../../lib/authFlow";
+import { useAuth } from "../../lib/auth-context";
 
 const SPECIALS = "!@#$%^&*";
+const CONSENT_VERSION = process.env.NEXT_PUBLIC_SMS_CONSENT_VERSION ?? "2026-09-01";
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
+
+type TurnstileApi = {
+  render: (element: HTMLElement, options: { sitekey: string; action: string; size: "flexible"; callback: (token: string) => void; "expired-callback": () => void; "error-callback": () => void }) => string;
+  reset: (widgetId: string) => void;
+  remove: (widgetId: string) => void;
+};
+
+declare global {
+  interface Window {
+    turnstile?: TurnstileApi;
+  }
+}
+
+type RegistrationResult = { token: string };
+type RegistrationStartResult = { maskedDestination: string };
 
 function passwordError(password: string): string | null {
   if (password.length < 10) return "Password must be at least 10 characters.";
@@ -18,113 +38,260 @@ function passwordError(password: string): string | null {
   return null;
 }
 
-function responseError(error: unknown): string {
-  if (typeof error === "string" && error.trim()) return error;
-  if (!error || typeof error !== "object") return "Unable to create account.";
-
-  const details = error as { formErrors?: unknown; fieldErrors?: Record<string, unknown> };
-  const messages = [
-    ...(Array.isArray(details.formErrors) ? details.formErrors : []),
-    ...Object.values(details.fieldErrors ?? {}).flatMap((value) => Array.isArray(value) ? value : []),
-  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
-  return messages[0] ?? "Unable to create account.";
+function apiMessage(error: unknown, fallback: string): string {
+  return error instanceof ApiError && error.message ? error.message : fallback;
 }
 
-type CreatedAccount = {
-  employeeNumber: string;
-  email: string;
-};
-
 export default function RegisterPage() {
+  const router = useRouter();
+  const { login } = useAuth();
+  const [flow, dispatch] = useReducer(reduceAuthFlow, "phone", createAuthFlow);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [recoveryPin, setRecoveryPin] = useState("");
+  const [smsConsent, setSmsConsent] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [showPasswords, setShowPasswords] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [createdAccount, setCreatedAccount] = useState<CreatedAccount | null>(null);
+  const firstInvalidRef = useRef<HTMLInputElement>(null);
+  const turnstileContainerRef = useRef<HTMLDivElement>(null);
+  const turnstileWidgetRef = useRef<string | null>(null);
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    const ruleError = passwordError(password);
-    if (ruleError) return setError(ruleError);
-    if (password !== confirmPassword) return setError("Passwords do not match.");
-    if (!/^\d{6}$/.test(recoveryPin)) return setError("Recovery PIN must be exactly 6 digits.");
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/api/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password, recoveryPin }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(responseError(data.error));
+  useEffect(() => {
+    if (flow.step !== "entry" || !TURNSTILE_SITE_KEY || !turnstileContainerRef.current) return;
+    let cancelled = false;
+    let attempts = 0;
+
+    function renderWidget() {
+      if (cancelled || turnstileWidgetRef.current || !turnstileContainerRef.current) return;
+      if (!window.turnstile) {
+        attempts += 1;
+        if (attempts < 50) window.setTimeout(renderWidget, 100);
         return;
       }
-      setCreatedAccount({ employeeNumber: data.employeeNumber, email: data.email });
-    } catch {
-      setError(`Unable to connect to ${BRAND_NAME}. Please try again.`);
+      turnstileWidgetRef.current = window.turnstile.render(turnstileContainerRef.current, {
+        sitekey: TURNSTILE_SITE_KEY,
+        action: "sms_registration",
+        size: "flexible",
+        callback: setTurnstileToken,
+        "expired-callback": () => setTurnstileToken(""),
+        "error-callback": () => {
+          setTurnstileToken("");
+          setError("Security check unavailable. Please refresh and try again.");
+        },
+      });
+    }
+
+    const scriptId = "continuixai-turnstile";
+    let script = document.getElementById(scriptId) as HTMLScriptElement | null;
+    if (!script) {
+      script = document.createElement("script");
+      script.id = scriptId;
+      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      script.async = true;
+      script.defer = true;
+      script.addEventListener("load", renderWidget, { once: true });
+      document.head.appendChild(script);
+    } else {
+      renderWidget();
+    }
+
+    return () => {
+      cancelled = true;
+      if (turnstileWidgetRef.current && window.turnstile) window.turnstile.remove(turnstileWidgetRef.current);
+      turnstileWidgetRef.current = null;
+    };
+  }, [flow.step]);
+
+  function resetTurnstile() {
+    setTurnstileToken("");
+    if (turnstileWidgetRef.current && window.turnstile) window.turnstile.reset(turnstileWidgetRef.current);
+  }
+
+  async function submitDetails(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+    const ruleError = passwordError(password);
+    if (ruleError) {
+      setError(ruleError);
+      firstInvalidRef.current?.focus();
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.");
+      firstInvalidRef.current?.focus();
+      return;
+    }
+    if (!smsConsent) return setError("Please agree to receive security text messages.");
+    if (!turnstileToken) return setError("Complete the security check before continuing.");
+
+    setLoading(true);
+    try {
+      const result = await apiJson<RegistrationStartResult>("/api/auth/register/start", {
+        method: "POST",
+        body: JSON.stringify({ name, email, phone, password, smsConsent: true, consentVersion: CONSENT_VERSION, turnstileToken }),
+      });
+      dispatch({ type: "CODE_SENT", maskedDestination: result.maskedDestination, now: Date.now() });
+      setPassword("");
+      setConfirmPassword("");
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 429) {
+        setError(caught.retryAfterSeconds ? `Too many requests. Try again in ${formatWaitTime(caught.retryAfterSeconds)}.` : caught.message);
+      } else if (caught instanceof ApiError && caught.status === 503) {
+        dispatch({ type: "PROVIDER_OUTAGE" });
+        setError("Text message verification is temporarily unavailable. Please try again later.");
+      } else if (caught instanceof ApiError && caught.status === 400) {
+        setError("Check your name, work email, mobile number, and password, then try again.");
+      } else {
+        setError(apiMessage(caught, "We could not start registration. Check your information and try again."));
+      }
+      resetTurnstile();
     } finally {
       setLoading(false);
     }
   }
 
-  if (createdAccount) {
+  async function verifyCode(code: string) {
+    setError(null);
+    setLoading(true);
+    try {
+      const result = await apiJson<RegistrationResult>("/api/auth/register/check", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      });
+      await login(result.token);
+      dispatch({ type: "VERIFIED" });
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 429) {
+        dispatch({ type: "LOCKED", retryAfterSeconds: caught.retryAfterSeconds ?? 900, now: Date.now() });
+      } else if (caught instanceof ApiError && /session expired/i.test(caught.message)) {
+        dispatch({ type: "CHALLENGE_EXPIRED" });
+        setError("Your verification session expired. Start again to get a new code.");
+      } else if (caught instanceof ApiError && caught.status === 503) {
+        dispatch({ type: "PROVIDER_OUTAGE" });
+        setError("Text message verification is temporarily unavailable. Please try again later.");
+      } else {
+        dispatch({ type: "CODE_REJECTED" });
+        setError("That verification code is not correct or has expired.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function resendCode() {
+    setError(null);
+    setLoading(true);
+    try {
+      const result = await apiJson<RegistrationStartResult>("/api/auth/register/resend", {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      dispatch({ type: "CODE_SENT", maskedDestination: result.maskedDestination, now: Date.now() });
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 429) {
+        const wait = caught.retryAfterSeconds ?? 30;
+        dispatch({ type: "RETRY_AFTER", retryAfterSeconds: wait, now: Date.now() });
+        setError(`Please wait ${formatWaitTime(wait)} before requesting another code.`);
+      } else if (caught instanceof ApiError && caught.status === 401) {
+        dispatch({ type: "CHALLENGE_EXPIRED" });
+        setError("Your verification session expired. Start again to get a new code.");
+      } else {
+        dispatch({ type: "PROVIDER_OUTAGE" });
+        setError("Text message verification is temporarily unavailable. Please try again later.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function restart() {
+    dispatch({ type: "RESTART" });
+    setError(null);
+    setTurnstileToken("");
+  }
+
+  if (flow.step === "complete") {
     return (
-      <main className="container">
-        <section style={{ maxWidth: 560, margin: "32px auto", padding: 24, border: "1px solid var(--color-border)", borderRadius: 16, background: "var(--color-surface)" }}>
-          <div style={{ marginBottom: 24 }}><BrandLockup /></div>
-          <h1>Account Created</h1>
-          <p>Your {BRAND_NAME} account is ready. Save this Employee Number with your Recovery PIN.</p>
-          <div style={{ margin: "20px 0", padding: 18, borderRadius: 12, background: "var(--color-surface-hover)", textAlign: "center" }}>
-            <p style={{ margin: "0 0 6px", fontSize: 14 }}>Your Employee Number</p>
-            <strong style={{ fontSize: 24, letterSpacing: "0.04em" }}>{createdAccount.employeeNumber}</strong>
-          </div>
-          <p style={{ fontSize: 14 }}>Sign in with <strong>{createdAccount.email}</strong> or your Employee Number. You will secure the account with multi-factor authentication next.</p>
-          <Link href="/login" style={{ display: "block", marginTop: 20 }}><button type="button" style={{ width: "100%" }}>Continue to Sign In</button></Link>
+      <main className="auth-page">
+        <section className="auth-card" aria-labelledby="registration-complete-title">
+          <BrandLockup />
+          <h1 id="registration-complete-title">Your account is ready</h1>
+          <p>Your phone number is verified and you are signed in.</p>
+          <button type="button" onClick={() => router.push("/")}>Continue</button>
+        </section>
+      </main>
+    );
+  }
+
+  if (flow.step === "verification") {
+    return (
+      <main className="auth-page">
+        <section className="auth-card" aria-labelledby="registration-code-title">
+          <BrandLockup />
+          <h1 id="registration-code-title">Check your text messages</h1>
+          <p className="auth-intro">Keep this screen open while you enter the code. We never ask you to scan a QR code during registration.</p>
+          <VerificationCodeForm
+            method="SMS"
+            maskedDestination={flow.maskedDestination}
+            resendAvailableAt={flow.resendAvailableAt}
+            lockedUntil={flow.lockedUntil}
+            busy={loading}
+            error={error}
+            submitLabel="Verify and create account"
+            onSubmit={verifyCode}
+            onResend={resendCode}
+            onRestart={restart}
+          />
         </section>
       </main>
     );
   }
 
   return (
-    <main className="container">
-      <div style={{ margin: "24px 0" }}><BrandLockup /></div>
-      <h1>Create a New Account</h1>
-      <p>{BRAND_NAME} will automatically assign you a unique Employee Number.</p>
-      <form onSubmit={submit} className="form">
-        <input type="text" autoComplete="name" placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} required />
-        <input type="email" inputMode="email" autoComplete="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} required />
-
-        <div style={{ padding: "12px 14px", border: "1px solid #555", borderRadius: 8 }}>
-          <strong>Password requirements</strong>
-          <ul style={{ margin: "8px 0 0", paddingLeft: 22, lineHeight: 1.6 }}>
-            <li>At least 10 characters</li>
-            <li>Must not start with a number</li>
-            <li>At least one uppercase letter (A-Z)</li>
-            <li>At least one lowercase letter (a-z)</li>
-            <li>At least one number (0-9)</li>
-            <li>At least one special character: ! @ # $ % ^ &amp; *</li>
-          </ul>
-        </div>
-
-        <input type={showPasswords ? "text" : "password"} autoComplete="new-password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={10} required />
-        <input type={showPasswords ? "text" : "password"} autoComplete="new-password" placeholder="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} minLength={10} required />
-        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input type="checkbox" checked={showPasswords} onChange={(e) => setShowPasswords(e.target.checked)} />
-          Show password
-        </label>
-
-        <input type="password" inputMode="numeric" autoComplete="off" placeholder="6-digit Recovery PIN" value={recoveryPin} onChange={(e) => setRecoveryPin(e.target.value.replace(/\D/g, "").slice(0, 6))} pattern="\d{6}" required />
-        <p style={{ fontSize: 14 }}>Your Recovery PIN verifies you if you forget your Employee Number or password. Do not share it.</p>
-        <button type="submit" disabled={loading}>{loading ? "Creating account..." : "Create Account"}</button>
-        {error && <p className="error-text" role="alert" aria-live="polite">{error}</p>}
-      </form>
-      <p style={{ marginTop: 18 }}><Link href="/login">Already have an account? Sign in now</Link></p>
+    <main className="auth-page">
+      <section className="auth-card" aria-labelledby="registration-title">
+        <BrandLockup />
+        <h1 id="registration-title">Create your account</h1>
+        <p className="auth-intro">Use a mobile number you control. We will text a code to verify it.</p>
+        <form className="form" onSubmit={submitDetails}>
+          <div className="auth-field">
+            <label htmlFor="register-name">Full name</label>
+            <input id="register-name" type="text" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} required />
+          </div>
+          <div className="auth-field">
+            <label htmlFor="register-email">Work email</label>
+            <input id="register-email" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" value={email} onChange={(event) => setEmail(event.target.value)} required />
+          </div>
+          <div className="auth-field">
+            <label htmlFor="register-phone">Mobile number</label>
+            <input id="register-phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="(555) 123-4567" value={phone} onChange={(event) => setPhone(event.target.value)} required />
+            <p className="auth-help">United States mobile numbers only during the pilot.</p>
+          </div>
+          <details className="auth-details">
+            <summary>Password requirements</summary>
+            <p>Use at least 10 characters. Do not start with a number. Include uppercase, lowercase, a number, and one of: ! @ # $ % ^ &amp; *</p>
+          </details>
+          <div className="auth-field">
+            <label htmlFor="register-password">Password</label>
+            <input ref={firstInvalidRef} id="register-password" type={showPasswords ? "text" : "password"} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={10} required />
+          </div>
+          <div className="auth-field">
+            <label htmlFor="register-confirm-password">Confirm password</label>
+            <input id="register-confirm-password" type={showPasswords ? "text" : "password"} autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={10} required />
+          </div>
+          <label className="auth-checkbox"><input type="checkbox" checked={showPasswords} onChange={(event) => setShowPasswords(event.target.checked)} /> Show password</label>
+          <label className="auth-checkbox auth-consent"><input type="checkbox" checked={smsConsent} onChange={(event) => setSmsConsent(event.target.checked)} required /> I agree to receive security text messages for sign-in and account recovery. Message and data rates may apply.</label>
+          <div ref={turnstileContainerRef} className="auth-turnstile" aria-label="Security check" />
+          {!TURNSTILE_SITE_KEY && <p className="error-text auth-message" role="alert">Registration security check is not configured.</p>}
+          <button type="submit" disabled={loading || !turnstileToken}>{loading ? "Sending code..." : "Text me a code"}</button>
+          {error && <p className="error-text auth-message" role="alert" aria-live="polite">{error}</p>}
+        </form>
+        <p className="auth-footer"><Link href="/login">Already have an account? Sign in</Link></p>
+      </section>
     </main>
   );
 }

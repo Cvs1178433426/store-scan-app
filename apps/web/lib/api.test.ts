@@ -59,6 +59,13 @@ describe("apiFetch", () => {
     const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect((init.headers as Headers).has("Content-Type")).toBe(false);
   });
+
+  it("includes HttpOnly challenge cookies on same-origin auth requests", async () => {
+    await apiFetch("/api/auth/mfa/check", { method: "POST", body: JSON.stringify({ code: "123456" }) });
+
+    const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(init.credentials).toBe("include");
+  });
 });
 
 describe("apiJson", () => {
@@ -92,5 +99,29 @@ describe("apiJson", () => {
     const err = await apiJson("/api/items").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
     expect((err as ApiError).message).toContain("Required");
+  });
+
+  it("carries the server Retry-After duration without reading challenge material", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ error: "Too many verification requests. Please try again later." }),
+      { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "30" } },
+    )));
+
+    const err = await apiJson("/api/auth/login", { method: "POST" }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).retryAfterSeconds).toBe(30);
+  });
+
+  it("carries a stable server error code for support-required accounts", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(403, {
+      error: "This account needs security support before phone enrollment can continue.",
+      code: "security_support_required",
+    })));
+
+    const err = await apiJson("/api/auth/login", { method: "POST" }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).code).toBe("security_support_required");
   });
 });

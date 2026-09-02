@@ -82,6 +82,8 @@ Historical database migration directory names are retained because renaming appl
 
 The repository includes a Claude adversarial review brief under `docs/CLAUDE-COMPLETE-REVIEW-BRIEF.md`. A release candidate is not considered verified until dependency-backed API/web tests, lint, production build, migration validation, tenant-integrity checks, and device/scanner pilot checks pass in a network-enabled environment.
 
+SMS-first rollout and evidence procedures are documented in `docs/SMS-MFA-OPERATIONS.md` and `docs/SMS-MFA-PHYSICAL-ACCEPTANCE.md`.
+
 ## License
 
 See `LICENSE` for the inherited/open-source licensing terms that apply to this codebase.

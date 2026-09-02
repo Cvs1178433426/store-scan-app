@@ -38,7 +38,7 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
   // Continuixai Ops is English by default. Always send an explicit locale so a fresh device cannot
   // accidentally inherit a server-side legacy locale fallback before localStorage is initialized.
   headers.set("X-Locale", currentLocale());
-  return fetch(`${API_URL}${path}`, { ...init, headers, cache: "no-store" });
+  return fetch(`${API_URL}${path}`, { ...init, headers, cache: "no-store", credentials: "include" });
 }
 
 function requestFailedMessage(status: number): string {
@@ -47,10 +47,14 @@ function requestFailedMessage(status: number): string {
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  retryAfterSeconds: number | null;
+  code: string | null;
+  constructor(message: string, status: number, retryAfterSeconds: number | null = null, code: string | null = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.retryAfterSeconds = retryAfterSeconds;
+    this.code = code;
   }
 }
 
@@ -60,7 +64,10 @@ export async function apiJson<T>(path: string, init: RequestInit = {}): Promise<
     const body = await res.json().catch(() => null);
     const message =
       typeof body?.error === "string" ? body.error : body?.error ? JSON.stringify(body.error) : requestFailedMessage(res.status);
-    throw new ApiError(message, res.status);
+    const retryAfter = res.headers.get("Retry-After");
+    const retryAfterSeconds = retryAfter && /^\d+$/.test(retryAfter) ? Number(retryAfter) : null;
+    const code = typeof body?.code === "string" ? body.code : null;
+    throw new ApiError(message, res.status, retryAfterSeconds, code);
   }
   if (res.status === 204) return undefined as T;
   return res.json();

@@ -1,13 +1,13 @@
 import type { FastifyInstance } from "fastify";
-import { randomBytes } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import {
   bootstrapAdminSchema,
   createUserSchema,
   loginSchema,
-  recoverPasswordSchema,
-  recoverUserIdSchema,
+  passwordRecoveryCompleteSchema,
+  passwordRecoveryStartSchema,
   registerSchema,
   updateProfileSchema,
 } from "@continuixai/shared";
@@ -15,6 +15,41 @@ import { prisma } from "../lib/prisma.js";
 import { t } from "../lib/i18n.js";
 import { bumpTokenVersion, invalidateTokenVersionCache } from "../lib/tokenVersion.js";
 import { clearMediaCookie } from "../lib/mediaAuth.js";
+import { decryptPhone } from "../lib/phone.js";
+import { clearChallengeCookie, setChallengeCookie } from "../lib/mfaChallengeCookie.js";
+import { TwilioVerifyProvider } from "../lib/twilioVerifyProvider.js";
+import { PrismaVerificationPolicyStore, VerificationLockedError, VerificationPolicy } from "../lib/verificationPolicy.js";
+import { PasswordRecoveryRejectedError, PasswordRecoveryService, PrismaPasswordRecoveryRepository } from "../lib/passwordRecoveryService.js";
+import { VerificationProviderError } from "../lib/verificationProvider.js";
+import { isSmsEnrollmentRequired } from "../lib/smsMigration.js";
+
+function required(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`${name} is required when SMS MFA is enabled.`);
+  return value;
+}
+
+function loginDimension(kind: string, value: string): string {
+  return `${kind}:${createHmac("sha256", required("RATE_LIMIT_HMAC_KEY")).update(value).digest("hex")}`;
+}
+
+function localFactorBinding(method: "TOTP" | "RECOVERY_CODE", userId: string): string {
+  return createHmac("sha256", required("RATE_LIMIT_HMAC_KEY")).update(`${method}:${userId}`).digest("hex");
+}
+
+function loginVerificationPolicy(): VerificationPolicy {
+  const provider = new TwilioVerifyProvider({
+    accountSid: required("TWILIO_ACCOUNT_SID"),
+    apiKeySid: required("TWILIO_API_KEY_SID"),
+    apiKeySecret: required("TWILIO_API_KEY_SECRET"),
+    serviceSid: required("TWILIO_VERIFY_SERVICE_SID"),
+  });
+  return new VerificationPolicy(new PrismaVerificationPolicyStore(), provider);
+}
+
+function passwordRecoveryService(): PasswordRecoveryService {
+  return new PasswordRecoveryService(new PrismaPasswordRecoveryRepository(), loginVerificationPolicy());
+}
 
 function newEmployeeNumber(): string {
   return `EMP-${randomBytes(5).toString("hex").toUpperCase()}`;
@@ -29,31 +64,6 @@ async function createEmployeeNumber(): Promise<string> {
   throw new Error("Unable to allocate a unique employee number.");
 }
 
-async function verifyRecoveryPin(user: {
-  id: string;
-  recoveryPinHash: string | null;
-  recoveryFailureCount: number;
-  recoveryLockedUntil: Date | null;
-}, pin: string): Promise<boolean> {
-  if (!user.recoveryPinHash || (user.recoveryLockedUntil && user.recoveryLockedUntil > new Date())) return false;
-  if (await bcrypt.compare(pin, user.recoveryPinHash)) {
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { recoveryFailureCount: 0, recoveryLockedUntil: null },
-    });
-    return true;
-  }
-  const shouldLock = user.recoveryFailureCount >= 4;
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      recoveryFailureCount: shouldLock ? 0 : { increment: 1 },
-      recoveryLockedUntil: shouldLock ? new Date(Date.now() + 15 * 60_000) : null,
-    },
-  });
-  return false;
-}
-
 export async function authRoutes(app: FastifyInstance) {
   app.get("/bootstrap/status", async () => {
     const userCount = await prisma.user.count();
@@ -61,6 +71,7 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   app.post("/bootstrap/admin", async (request, reply) => {
+    if (process.env.SMS_MFA_ENABLED === "true") return reply.code(410).send({ error: "Verified registration is required." });
     const parsed = bootstrapAdminSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const userCount = await prisma.user.count();
@@ -74,6 +85,7 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   app.post("/register", { config: { rateLimit: { max: 5, timeWindow: "1 hour" } } }, async (request, reply) => {
+    if (process.env.SMS_MFA_ENABLED === "true") return reply.code(410).send({ error: "Use SMS-verified registration." });
     const parsed = registerSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { name, email, password, recoveryPin } = parsed.data;
@@ -97,6 +109,64 @@ export async function authRoutes(app: FastifyInstance) {
     const valid = await bcrypt.compare(parsed.data.password, user.passwordHash);
     if (!valid) return reply.code(401).send({ error: t("invalidCredentials", request.locale) });
 
+    if (process.env.SMS_MFA_ENABLED === "true") {
+      const smsUser = user as typeof user & {
+        accountStatus?: string;
+        phoneEncrypted?: string | null;
+        phoneEncryptionKeyVersion?: number | null;
+        phoneLookupHash?: string | null;
+        phoneVersion?: number;
+        phoneLast4?: string | null;
+        phoneVerifiedAt?: Date | null;
+      };
+      if (smsUser.accountStatus !== "ACTIVE") {
+        return reply.code(403).send({ error: "This account is not available for sign-in." });
+      }
+      if (!smsUser.phoneEncrypted || smsUser.phoneEncryptionKeyVersion == null || !smsUser.phoneLookupHash || !smsUser.phoneVerifiedAt || !smsUser.phoneLast4) {
+        if (user.mfaEnabled && user.mfaSecretEncrypted) {
+          const challenge = await loginVerificationPolicy().startLocalChallenge({
+            userId: user.id,
+            purpose: "LOGIN",
+            method: "TOTP",
+            destinationHash: localFactorBinding("TOTP", user.id),
+            destinationVersion: user.tokenVersion,
+          });
+          setChallengeCookie(reply, challenge.id);
+          return { mfaRequired: true, method: "TOTP", phoneEnrollmentRequired: true };
+        }
+        return reply.code(403).send({
+          error: "This account needs security support before phone enrollment can continue.",
+          code: "security_support_required",
+        });
+      }
+      try {
+        const destination = decryptPhone(smsUser.phoneEncrypted, smsUser.phoneEncryptionKeyVersion);
+        const challenge = await loginVerificationPolicy().startChallenge({
+          userId: user.id,
+          purpose: "LOGIN",
+          method: "SMS",
+          destination,
+          destinationHash: smsUser.phoneLookupHash,
+          destinationVersion: smsUser.phoneVersion ?? 1,
+          dimensions: [loginDimension("account", user.email.trim().toLowerCase()), loginDimension("ip", request.ip)],
+        });
+        setChallengeCookie(reply, challenge.id);
+        return {
+          mfaRequired: true,
+          method: "SMS",
+          maskedDestination: `(***) ***-${smsUser.phoneLast4}`,
+          user: { id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role },
+        };
+      } catch (error) {
+        if (error instanceof VerificationLockedError) {
+          reply.header("Retry-After", String(error.retryAfter));
+          return reply.code(429).send({ error: error.message });
+        }
+        request.log.error({ errorType: error instanceof Error ? error.name : "unknown" }, "login verification start failed");
+        return reply.code(503).send({ error: "Verification is temporarily unavailable. Please try again." });
+      }
+    }
+
     const purpose = user.mfaEnabled ? "mfa-login" : "mfa-setup";
     const challengeToken = app.jwt.sign({ sub: user.id, role: user.role, tv: user.tokenVersion, purpose }, { expiresIn: "10m" });
     return {
@@ -107,28 +177,55 @@ export async function authRoutes(app: FastifyInstance) {
     };
   });
 
-  app.post("/recover/user-id", { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } }, async (request, reply) => {
-    const parsed = recoverUserIdSchema.safeParse(request.body);
+  app.post("/password-recovery/start", { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } }, async (request, reply) => {
+    if (process.env.SMS_MFA_ENABLED !== "true") return reply.code(404).send({ error: "not found" });
+    const parsed = passwordRecoveryStartSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
-    if (!user || !user.isActive || !user.recoveryPinHash) return reply.code(401).send({ error: "We could not verify that account." });
-    const valid = await verifyRecoveryPin(user, parsed.data.recoveryPin);
-    if (!valid) return reply.code(401).send({ error: "We could not verify that account." });
-    return { employeeNumber: user.employeeNumber, email: user.email };
+    try {
+      const previousChallengeId = request.cookies.continuixai_mfa_challenge;
+      const result = await passwordRecoveryService().beginPasswordRecovery(parsed.data.email, {
+        method: parsed.data.method,
+        previousChallengeId,
+        dimensions: [loginDimension("password-recovery-ip", request.ip)],
+      });
+      setChallengeCookie(reply, result.challengeId ?? randomUUID());
+      return reply.code(202).send({ ok: true });
+    } catch (error) {
+      if (error instanceof VerificationLockedError) {
+        reply.header("Retry-After", String(error.retryAfter));
+        return reply.code(429).send({ error: error.message });
+      }
+      request.log.error({ errorType: error instanceof Error ? error.name : "unknown" }, "password recovery start failed");
+      setChallengeCookie(reply, randomUUID());
+      return reply.code(202).send({ ok: true });
+    }
   });
 
-  app.post("/recover/password", { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } }, async (request, reply) => {
-    const parsed = recoverPasswordSchema.safeParse(request.body);
+  app.post("/password-recovery/complete", { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } }, async (request, reply) => {
+    if (process.env.SMS_MFA_ENABLED !== "true") return reply.code(404).send({ error: "not found" });
+    const parsed = passwordRecoveryCompleteSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const identifier = parsed.data.identifier.trim();
-    const user = await prisma.user.findFirst({ where: { OR: [{ email: identifier.toLowerCase() }, { employeeNumber: identifier.toUpperCase() }] } });
-    if (!user || !user.isActive || !user.recoveryPinHash) return reply.code(401).send({ error: "We could not verify that account." });
-    const valid = await verifyRecoveryPin(user, parsed.data.recoveryPin);
-    if (!valid) return reply.code(401).send({ error: "We could not verify that account." });
-    const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
-    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
-    await bumpTokenVersion(user.id);
-    return { ok: true };
+    const challengeId = request.cookies.continuixai_mfa_challenge;
+    if (!challengeId) return reply.code(401).send({ error: "That verification code is not correct or has expired." });
+    try {
+      await passwordRecoveryService().completePasswordRecovery(challengeId, parsed.data.code, parsed.data.newPassword);
+      clearChallengeCookie(reply);
+      return { ok: true };
+    } catch (error) {
+      if (error instanceof VerificationLockedError) {
+        reply.header("Retry-After", String(error.retryAfter));
+        return reply.code(429).send({ error: error.message });
+      }
+      if (error instanceof VerificationProviderError) {
+        request.log.error({ errorType: error.name }, "password recovery completion failed");
+        return reply.code(503).send({ error: "Verification is temporarily unavailable. Please try again." });
+      }
+      if (error instanceof PasswordRecoveryRejectedError) {
+        return reply.code(401).send({ error: "That verification code is not correct or has expired." });
+      }
+      request.log.error({ errorType: error instanceof Error ? error.name : "unknown" }, "password recovery completion failed");
+      return reply.code(401).send({ error: "That verification code is not correct or has expired." });
+    }
   });
 
   app.post("/logout", { preHandler: [app.authenticate] }, async (_request, reply) => {
@@ -149,7 +246,13 @@ export async function authRoutes(app: FastifyInstance) {
       where: { userId: user.id, isActive: true, role: { in: ["OWNER", "ADMIN", "MANAGER"] } },
       select: { id: true },
     }));
-    return { id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, jobTitle: user.jobTitle, taskManager, mfaEnabled: user.mfaEnabled };
+    return {
+      id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber,
+      role: user.role, jobTitle: user.jobTitle, taskManager, mfaEnabled: user.mfaEnabled,
+      phoneVerified: Boolean(user.phoneVerifiedAt),
+      phoneLast4: user.phoneVerifiedAt ? user.phoneLast4 : null,
+      phoneEnrollmentRequired: isSmsEnrollmentRequired(user.phoneVerifiedAt),
+    };
   });
 
   app.post("/users", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
@@ -170,25 +273,17 @@ export async function authRoutes(app: FastifyInstance) {
     if (id === request.user.sub) return reply.code(400).send({ error: t("cannotDeleteSelf", request.locale) });
     const target = await prisma.user.findUnique({ where: { id }, select: { id: true } });
     if (!target) return reply.code(404).send({ error: t("userNotFound", request.locale) });
-    await prisma.user.update({ where: { id }, data: { isActive: false } });
+    await prisma.user.update({
+      where: { id },
+      data: { accountStatus: "DISABLED", isActive: false, tokenVersion: { increment: 1 } },
+    });
     await prisma.organizationMembership.updateMany({ where: { userId: id }, data: { isActive: false } });
-    await bumpTokenVersion(id);
+    invalidateTokenVersionCache(id);
     return reply.code(204).send();
   });
 
-  app.post("/users/:id/reset-password", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    if (id === request.user.sub) return reply.code(400).send({ error: t("cannotResetOwnPassword", request.locale) });
-    const target = await prisma.user.findUnique({ where: { id } });
-    if (!target) return reply.code(404).send({ error: t("userNotFound", request.locale) });
-    const temporaryPassword = randomBytes(12).toString("base64url");
-    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
-    await prisma.user.update({ where: { id }, data: { passwordHash } });
-    await bumpTokenVersion(id);
-    return { id: target.id, email: target.email, name: target.name, temporaryPassword };
-  });
-
   app.post("/users/:id/reset-mfa", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
+    if (process.env.SMS_MFA_ENABLED === "true") return reply.code(403).send({ error: "Administrators cannot replace user authentication factors." });
     const { id } = request.params as { id: string };
     const target = await prisma.user.findUnique({ where: { id }, select: { id: true } });
     if (!target) return reply.code(404).send({ error: t("userNotFound", request.locale) });

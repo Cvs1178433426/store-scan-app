@@ -1,122 +1,220 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
+import { useReducer, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { API_URL } from "../../lib/api";
-import { useAuth } from "../../lib/auth-context";
-import { BRAND_NAME } from "../../lib/brand";
 import { BrandLockup } from "../../components/BrandLockup";
+import { VerificationCodeForm } from "../../components/VerificationCodeForm";
+import { ApiError, apiJson } from "../../lib/api";
+import { createAuthFlow, formatWaitTime, reduceAuthFlow, type VerificationMethod } from "../../lib/authFlow";
+import { useAuth } from "../../lib/auth-context";
 
-type Stage = "password" | "setup" | "verify" | "backup";
+type LoginStartResult = {
+  mfaRequired: true;
+  method: "SMS" | "TOTP";
+  maskedDestination?: string;
+  phoneEnrollmentRequired?: boolean;
+};
 
-const pageStyle: CSSProperties = { minHeight: "100vh", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "42px 18px 28px" };
-const cardStyle: CSSProperties = { width: "100%", maxWidth: 470, background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: 18, padding: "28px 28px 24px", boxShadow: "0 10px 30px rgba(0,0,0,0.08)" };
-const brandStyle: CSSProperties = { fontSize: 25, lineHeight: 1.15, fontWeight: 750, margin: 0, letterSpacing: "-0.02em" };
-const taglineStyle: CSSProperties = { fontSize: 14, lineHeight: 1.45, color: "var(--color-text-muted)", margin: "7px 0 24px" };
-const titleStyle: CSSProperties = { fontSize: 20, lineHeight: 1.25, margin: "0 0 6px" };
-const helperStyle: CSSProperties = { fontSize: 14, lineHeight: 1.45, color: "var(--color-text-secondary)", margin: "0 0 16px" };
-const fieldStyle: CSSProperties = { fontSize: 16, minHeight: 46, padding: "10px 12px" };
-const showStyle: CSSProperties = { display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--color-text-secondary)", width: "fit-content" };
-
-function AuthShell({ children }: { children: React.ReactNode }) {
-  return <main style={pageStyle}><section style={cardStyle}><div style={{ marginBottom: 24 }}><BrandLockup /></div>{children}</section></main>;
-}
+type LoginCompleteResult = { token: string; phoneEnrollmentRequired?: boolean };
 
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
+  const [flow, dispatch] = useReducer(reduceAuthFlow, "password", createAuthFlow);
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [name, setName] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [phoneEnrollmentRequired, setPhoneEnrollmentRequired] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [checkingBootstrap, setCheckingBootstrap] = useState(true);
-  const [needsBootstrap, setNeedsBootstrap] = useState(false);
-  const [stage, setStage] = useState<Stage>("password");
-  const [challengeToken, setChallengeToken] = useState("");
-  const [mfaCode, setMfaCode] = useState("");
-  const [qrDataUrl, setQrDataUrl] = useState("");
-  const [manualSecret, setManualSecret] = useState("");
-  const [backupCodes, setBackupCodes] = useState<string[]>([]);
-  const [pendingToken, setPendingToken] = useState("");
 
-  useEffect(() => {
-    fetch(`${API_URL}/api/auth/bootstrap/status`)
-      .then((res) => (res.ok ? res.json() : { needsBootstrap: false }))
-      .then((data: { needsBootstrap: boolean }) => setNeedsBootstrap(data.needsBootstrap))
-      .catch(() => setNeedsBootstrap(false))
-      .finally(() => setCheckingBootstrap(false));
-  }, []);
-
-  async function beginMfa(data: { challengeToken: string; enrollmentRequired: boolean }) {
-    setChallengeToken(data.challengeToken); setError(null);
-    if (data.enrollmentRequired) {
-      const setupRes = await fetch(`${API_URL}/api/auth/mfa/setup`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ challengeToken: data.challengeToken }) });
-      const setup = await setupRes.json();
-      if (!setupRes.ok) throw new Error(setup.error || "Unable to start MFA setup.");
-      setQrDataUrl(setup.qrDataUrl); setManualSecret(setup.secret); setStage("setup");
-    } else setStage("verify");
-  }
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault(); setError(null); setLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identifier, password }) });
-      if (!res.ok) { setError("Incorrect email, employee number, or password."); return; }
-      await beginMfa(await res.json());
-    } catch (err) { setError(err instanceof Error ? err.message : `Unable to connect to ${BRAND_NAME}. Please try again.`); }
-    finally { setLoading(false); }
-  }
-
-  async function handleBootstrapSubmit(e: FormEvent) {
-    e.preventDefault(); setError(null);
-    if (password !== confirmPassword) { setError("Passwords do not match."); return; }
+  async function startLogin(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/auth/bootstrap/admin`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, email: identifier, password }) });
-      if (!res.ok) {
-        if (res.status === 409) { setNeedsBootstrap(false); setError("An administrator account already exists. Please sign in."); return; }
-        setError("Unable to create the administrator account."); return;
+      const result = await apiJson<LoginStartResult>("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ identifier, password }),
+      });
+      setPhoneEnrollmentRequired(Boolean(result.phoneEnrollmentRequired));
+      dispatch({ type: "CODE_SENT", method: result.method, maskedDestination: result.maskedDestination, now: Date.now() });
+      setPassword("");
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 429) {
+        setError(caught.retryAfterSeconds
+          ? `Too many requests. Try again in ${formatWaitTime(caught.retryAfterSeconds)}.`
+          : "Too many requests. Please try again later.");
+      } else if (caught instanceof ApiError && caught.status === 503) {
+        dispatch({ type: "PROVIDER_OUTAGE" });
+        setError("Text message verification is temporarily unavailable. Please try again later.");
+      } else if (caught instanceof ApiError && caught.code === "security_support_required") {
+        setError("This account does not have a working security factor. Contact security support before continuing.");
+      } else {
+        setError("Incorrect email, employee number, or password.");
       }
-      setNeedsBootstrap(false);
-      const loginRes = await fetch(`${API_URL}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ identifier, password }) });
-      if (!loginRes.ok) { setError("Account created, but sign-in failed. Please sign in again."); return; }
-      await beginMfa(await loginRes.json());
-    } catch (err) { setError(err instanceof Error ? err.message : `Unable to connect to ${BRAND_NAME}. Please try again.`); }
-    finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function confirmEnrollment(e: FormEvent) {
-    e.preventDefault(); setError(null); setLoading(true);
+  async function verifyCode(code: string) {
+    setError(null);
+    setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/auth/mfa/confirm`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ challengeToken, code: mfaCode }) });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || "That verification code is not correct."); return; }
-      setBackupCodes(data.backupCodes || []); setPendingToken(data.token); setStage("backup");
-    } catch { setError("Unable to verify MFA. Please try again."); }
-    finally { setLoading(false); }
+      const result = await apiJson<LoginCompleteResult>("/api/auth/mfa/check", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      });
+      await login(result.token);
+      dispatch({ type: "VERIFIED" });
+      if (phoneEnrollmentRequired || result.phoneEnrollmentRequired) router.push("/settings?enrollPhone=1");
+      else router.push("/");
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 429) {
+        dispatch({ type: "LOCKED", retryAfterSeconds: caught.retryAfterSeconds ?? 900, now: Date.now() });
+      } else if (caught instanceof ApiError && /session expired/i.test(caught.message)) {
+        dispatch({ type: "CHALLENGE_EXPIRED" });
+        setError("Your verification session expired. Start again to sign in.");
+      } else if (caught instanceof ApiError && caught.status === 503) {
+        dispatch({ type: "PROVIDER_OUTAGE" });
+        setError("Verification is temporarily unavailable. Please try again later.");
+      } else {
+        dispatch({ type: "CODE_REJECTED" });
+        setError("That verification code is not correct or has expired.");
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function verifyMfa(e: FormEvent) {
-    e.preventDefault(); setError(null); setLoading(true);
+  async function resendCode() {
+    setError(null);
+    setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/auth/mfa/verify`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ challengeToken, code: mfaCode }) });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || "That verification code is not correct."); return; }
-      await login(data.token); router.push("/");
-    } catch { setError("Unable to verify MFA. Please try again."); }
-    finally { setLoading(false); }
+      const result = await apiJson<{ method: "SMS"; maskedDestination: string }>("/api/auth/mfa/resend", {
+        method: "POST",
+      });
+      dispatch({ type: "CODE_SENT", method: result.method, maskedDestination: result.maskedDestination, now: Date.now() });
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 429) {
+        const retryAfter = caught.retryAfterSeconds ?? 900;
+        dispatch({ type: "RETRY_AFTER", retryAfterSeconds: retryAfter, now: Date.now() });
+        setError(`Another code cannot be sent yet. Try again in ${formatWaitTime(retryAfter)}.`);
+      } else if (caught instanceof ApiError && caught.status === 401) {
+        dispatch({ type: "CHALLENGE_EXPIRED" });
+        setError("Your verification session expired. Start again to sign in.");
+      } else {
+        dispatch({ type: "PROVIDER_OUTAGE" });
+        setError("A new text message could not be sent. Please try again later.");
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function finishEnrollment() { await login(pendingToken); router.push("/"); }
+  async function selectMethod(method: Exclude<VerificationMethod, "SMS">) {
+    setError(null);
+    setLoading(true);
+    try {
+      await apiJson<{ method: VerificationMethod }>("/api/auth/mfa/method", {
+        method: "POST",
+        body: JSON.stringify({ method }),
+      });
+      dispatch({ type: "METHOD_SELECTED", method });
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 401) {
+        dispatch({ type: "CHALLENGE_EXPIRED" });
+        setError("Your verification session expired. Start again to sign in.");
+      } else {
+        setError(caught instanceof ApiError ? caught.message : "That backup method is not available.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  if (checkingBootstrap) return <AuthShell><p style={taglineStyle}>Connecting securely...</p></AuthShell>;
-  if (stage === "setup") return <AuthShell><h1 style={brandStyle}>Secure Your Account</h1><p style={helperStyle}>Open your authenticator app and scan this QR code.</p>{qrDataUrl && <img src={qrDataUrl} alt={`${BRAND_NAME} MFA QR code`} style={{ width: 220, maxWidth: "100%", background: "white", padding: 8, borderRadius: 10, display: "block", margin: "16px auto" }} />}<p style={{ ...helperStyle, marginBottom: 6 }}><strong>Can’t scan it?</strong> Enter this setup key manually:</p><code style={{ wordBreak: "break-all", fontSize: 13 }}>{manualSecret}</code><form onSubmit={confirmEnrollment} className="form" style={{ marginTop: 18 }}><input style={fieldStyle} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={6} placeholder="6-digit verification code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))} required /><button type="submit" disabled={loading || mfaCode.length !== 6}>{loading ? "Verifying..." : "Verify and Enable MFA"}</button>{error && <p className="error-text">{error}</p>}</form></AuthShell>;
-  if (stage === "verify") return <AuthShell><h1 style={brandStyle}>Multi-Factor Verification</h1><p style={helperStyle}>Enter the 6-digit code from your authenticator app, or use a backup code.</p><form onSubmit={verifyMfa} className="form"><input style={fieldStyle} autoFocus autoComplete="one-time-code" placeholder="6-digit code or backup code" value={mfaCode} onChange={(e) => setMfaCode(e.target.value.toUpperCase())} required /><button type="submit" disabled={loading}>{loading ? "Verifying..." : "Verify & Sign In"}</button>{error && <p className="error-text">{error}</p>}</form><button type="button" className="secondary" onClick={() => { setStage("password"); setMfaCode(""); setPassword(""); }} style={{ marginTop: 12, width: "100%" }}>Back to Sign In</button></AuthShell>;
-  if (stage === "backup") return <AuthShell><h1 style={brandStyle}>MFA Is Enabled</h1><p style={helperStyle}><strong>Save these backup codes now.</strong> Each code can be used once if you lose access to your authenticator app.</p><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, margin: "18px 0" }}>{backupCodes.map((code) => <code key={code} style={{ fontSize: 14, padding: 8, background: "var(--color-surface-hover)", borderRadius: 8 }}>{code}</code>)}</div><button type="button" onClick={finishEnrollment} style={{ width: "100%" }}>I Saved My Backup Codes — Continue</button></AuthShell>;
+  function restart() {
+    dispatch({ type: "RESTART" });
+    setPhoneEnrollmentRequired(false);
+    setError(null);
+  }
 
-  return <AuthShell>{needsBootstrap ? <><h2 style={titleStyle}>Create Administrator</h2><p style={helperStyle}>Create the first administrator account. Multi-factor authentication will be required immediately after setup.</p><form onSubmit={handleBootstrapSubmit} className="form"><input style={fieldStyle} type="text" autoComplete="name" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} required /><input style={fieldStyle} type="email" inputMode="email" autoComplete="email" placeholder="Email" value={identifier} onChange={(e) => setIdentifier(e.target.value)} required /><input style={fieldStyle} type={showPassword ? "text" : "password"} autoComplete="new-password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required /><input style={fieldStyle} type={showPassword ? "text" : "password"} autoComplete="new-password" placeholder="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required /><label style={showStyle}><input type="checkbox" checked={showPassword} onChange={(e) => setShowPassword(e.target.checked)} />Show password</label><button type="submit" disabled={loading}>{loading ? "Creating account..." : "Create Administrator"}</button>{error && <p className="error-text">{error}</p>}</form></> : <><h2 style={titleStyle}>Sign In</h2><p style={helperStyle}>Enter your email address or Employee Number. You’ll verify with MFA next.</p><form onSubmit={handleSubmit} className="form"><input style={fieldStyle} type="text" autoCapitalize="none" autoComplete="username" placeholder="Email or Employee Number" value={identifier} onChange={(e) => setIdentifier(e.target.value)} required /><input style={fieldStyle} type={showPassword ? "text" : "password"} autoComplete="current-password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required /><label style={showStyle}><input type="checkbox" checked={showPassword} onChange={(e) => setShowPassword(e.target.checked)} />Show password</label><button type="submit" disabled={loading}>{loading ? "Signing in..." : "Sign In"}</button>{error && <p className="error-text" style={{ margin: "2px 0 0" }}>{error}</p>}</form><div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--color-border)", display: "grid", gap: 9, fontSize: 14 }}><Link href="/register"><strong>Create a New Account</strong></Link><Link href="/forgot-user-id">Forgot User ID / Employee Number?</Link><Link href="/forgot-password">Forgot Password?</Link><Link href="/help">Need Help?</Link></div></>}</AuthShell>;
+  if (flow.step === "verification") {
+    const heading = flow.method === "SMS"
+      ? "Check your text messages"
+      : flow.method === "TOTP"
+        ? "Use your authenticator"
+        : "Use a recovery code";
+    return (
+      <main className="auth-page">
+        <section className="auth-card" aria-labelledby="login-code-title">
+          <BrandLockup />
+          <h1 id="login-code-title">{heading}</h1>
+          <p className="auth-intro">Verification keeps your account secure. SMS is the standard sign-in method.</p>
+          <VerificationCodeForm
+            key={flow.method}
+            method={flow.method}
+            maskedDestination={flow.maskedDestination}
+            resendAvailableAt={flow.resendAvailableAt}
+            lockedUntil={flow.lockedUntil}
+            busy={loading}
+            error={error}
+            submitLabel="Verify and sign in"
+            onSubmit={verifyCode}
+            onResend={flow.method === "SMS" ? resendCode : undefined}
+            onRestart={restart}
+            onSelectMethod={selectMethod}
+          />
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="auth-page">
+      <section className="auth-card" aria-labelledby="login-title">
+        <BrandLockup />
+        <h1 id="login-title">Sign in</h1>
+        <p className="auth-intro">Enter your account details. We will text your verification code next.</p>
+        <form className="form" onSubmit={startLogin}>
+          <div className="auth-field">
+            <label htmlFor="login-identifier">Work email or Employee Number</label>
+            <input
+              id="login-identifier"
+              type="text"
+              autoCapitalize="none"
+              autoComplete="username"
+              value={identifier}
+              onChange={(event) => setIdentifier(event.target.value)}
+              required
+            />
+          </div>
+          <div className="auth-field">
+            <label htmlFor="login-password">Password</label>
+            <input
+              id="login-password"
+              type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+          </div>
+          <label className="auth-checkbox">
+            <input type="checkbox" checked={showPassword} onChange={(event) => setShowPassword(event.target.checked)} />
+            Show password
+          </label>
+          <button type="submit" disabled={loading}>{loading ? "Sending code..." : "Continue"}</button>
+          {error && <p className="error-text auth-message" role="alert" aria-live="polite">{error}</p>}
+        </form>
+        <nav className="auth-links" aria-label="Account help">
+          <Link href="/register"><strong>Create a new account</strong></Link>
+          <Link href="/forgot-password">Forgot password?</Link>
+          <Link href="/help">Need help?</Link>
+        </nav>
+      </section>
+    </main>
+  );
 }

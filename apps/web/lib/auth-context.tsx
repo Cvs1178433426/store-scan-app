@@ -59,6 +59,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const me = await res.json();
       setUser(me);
       localStorage.setItem(CACHED_USER_KEY, JSON.stringify(me));
+      if (me.phoneEnrollmentRequired && window.location.pathname !== "/settings") {
+        router.replace("/settings?enrollPhone=1");
+      }
     } catch {
       // 오프라인 등 네트워크 실패 — 토큰을 무효라고 단정하지 않고, 마지막으로 확인된
       // 사용자 정보로 폴백한다. 그래야 오프라인에서 로딩 화면에 갇히지 않고 캐시된
