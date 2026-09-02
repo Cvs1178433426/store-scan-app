@@ -107,6 +107,36 @@ jobs:
         run: npx prisma migrate status
       - name: Confirm migrated database matches schema.prisma exactly
         run: npx prisma migrate diff --exit-code --from-config-datasource --to-schema=prisma/schema.prisma
+      - name: Validate SMS MFA transactions on fresh PostgreSQL
+        env:
+          PHONE_ENCRYPTION_KEYS: "1:1111111111111111111111111111111111111111111111111111111111111111"
+          PHONE_LOOKUP_HMAC_KEYS: "1:2222222222222222222222222222222222222222222222222222222222222222"
+          RATE_LIMIT_HMAC_KEY: "3333333333333333333333333333333333333333333333333333333333333333"
+          MFA_ENCRYPTION_KEY: "ci-sms-mfa-encryption-key-not-for-production"
+        run: npx tsx scripts/smsMfaPostgresValidation.ts --fresh
+      - name: Validate SMS MFA upgrade migrations on populated PostgreSQL
+        env:
+          DATABASE_ADMIN_URL: postgresql://continuixai_ops:continuixai_ops@localhost:5432/postgres
+          UPGRADE_DATABASE_URL: postgresql://continuixai_ops:continuixai_ops@localhost:5432/continuixai_ops_upgrade
+        run: |
+          npx tsx scripts/smsMfaPostgresValidation.ts --prepare-upgrade
+          upgrade_migrations="$(mktemp -d)"
+          restore_migrations() {
+            for migration in "$upgrade_migrations"/*; do
+              if [ -e "$migration" ]; then mv "$migration" prisma/migrations/; fi
+            done
+          }
+          trap restore_migrations EXIT
+          mv prisma/migrations/20260909000000_sms_first_mfa "$upgrade_migrations"/
+          mv prisma/migrations/20260909010000_drop_verification_send_bucket "$upgrade_migrations"/
+          DATABASE_URL="$UPGRADE_DATABASE_URL" npx prisma migrate deploy
+          DATABASE_URL="$UPGRADE_DATABASE_URL" npx tsx scripts/smsMfaPostgresValidation.ts --seed-upgrade
+          restore_migrations
+          trap - EXIT
+          DATABASE_URL="$UPGRADE_DATABASE_URL" npx prisma migrate deploy
+          DATABASE_URL="$UPGRADE_DATABASE_URL" npx prisma migrate status
+          DATABASE_URL="$UPGRADE_DATABASE_URL" npx prisma migrate diff --exit-code --from-config-datasource --to-schema=prisma/schema.prisma
+          DATABASE_URL="$UPGRADE_DATABASE_URL" npx tsx scripts/smsMfaPostgresValidation.ts --validate-upgrade
       - name: Exercise first-user bootstrap on a fresh PostgreSQL database
         run: npx tsx scripts/freshPilotBootstrapValidation.ts
       - name: Exercise the real Store Count HTTP route on PostgreSQL
@@ -121,3 +151,5 @@ jobs:
         run: npx tsx scripts/taskFoundationValidation.ts
       - name: Exercise atomic counting and idempotent retries on PostgreSQL
         run: npx tsx scripts/storeCountDbValidation.ts
+      - name: Record database-validation candidate SHA
+        run: echo "database-validation passed for ${GITHUB_SHA}"

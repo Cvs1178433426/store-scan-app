@@ -1,7 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <g transform="rotate(0 50 50)"><polygon points="76.87,35.86 86.77,40.10 66.14,41.39" fill="#18B5C9"/><polygon points="64.14,23.13 59.90,13.23 58.61,33.86" fill="#18B5C9"/><polygon points="58.20,45.47 76.87,35.86 64.14,23.13 54.53,41.80" fill="#16235A"/><polygon points="73.05,32.04 92.14,12.95 87.05,7.86 67.96,26.95" fill="#16235A"/></g>
-  <g transform="rotate(90 50 50)"><polygon points="76.87,35.86 86.77,40.10 66.14,41.39" fill="#18B5C9"/><polygon points="64.14,23.13 59.90,13.23 58.61,33.86" fill="#18B5C9"/><polygon points="58.20,45.47 76.87,35.86 64.14,23.13 54.53,41.80" fill="#16235A"/><polygon points="73.05,32.04 92.14,12.95 87.05,7.86 67.96,26.95" fill="#16235A"/></g>
-  <g transform="rotate(180 50 50)"><polygon points="76.87,35.86 86.77,40.10 66.14,41.39" fill="#18B5C9"/><polygon points="64.14,23.13 59.90,13.23 58.61,33.86" fill="#18B5C9"/><polygon points="58.20,45.47 76.87,35.86 64.14,23.13 54.53,41.80" fill="#16235A"/><polygon points="73.05,32.04 92.14,12.95 87.05,7.86 67.96,26.95" fill="#16235A"/></g>
-  <g transform="rotate(270 50 50)"><polygon points="76.87,35.86 86.77,40.10 66.14,41.39" fill="#18B5C9"/><polygon points="64.14,23.13 59.90,13.23 58.61,33.86" fill="#18B5C9"/><polygon points="58.20,45.47 76.87,35.86 64.14,23.13 54.53,41.80" fill="#16235A"/><polygon points="73.05,32.04 92.14,12.95 87.05,7.86 67.96,26.95" fill="#16235A"/></g>
-  <circle cx="50" cy="50" r="7.4" fill="#F5A623"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="background" x1="128" y1="64" x2="896" y2="960" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1D2E73"/>
+      <stop offset="1" stop-color="#0E1733"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(512 438) rotate(90) scale(440)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#18B5C9" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#18B5C9" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#background)"/>
+  <circle cx="512" cy="438" r="440" fill="url(#glow)"/>
+  <g transform="translate(212 212) scale(6)">
+    <g transform="rotate(0 50 50)"><polygon points="76.87,35.86 86.77,40.10 66.14,41.39" fill="#18B5C9"/><polygon points="64.14,23.13 59.90,13.23 58.61,33.86" fill="#18B5C9"/><polygon points="58.20,45.47 76.87,35.86 64.14,23.13 54.53,41.80" fill="#FFFFFF"/><polygon points="73.05,32.04 92.14,12.95 87.05,7.86 67.96,26.95" fill="#FFFFFF"/></g>
+    <g transform="rotate(90 50 50)"><polygon points="76.87,35.86 86.77,40.10 66.14,41.39" fill="#18B5C9"/><polygon points="64.14,23.13 59.90,13.23 58.61,33.86" fill="#18B5C9"/><polygon points="58.20,45.47 76.87,35.86 64.14,23.13 54.53,41.80" fill="#FFFFFF"/><polygon points="73.05,32.04 92.14,12.95 87.05,7.86 67.96,26.95" fill="#FFFFFF"/></g>
+    <g transform="rotate(180 50 50)"><polygon points="76.87,35.86 86.77,40.10 66.14,41.39" fill="#18B5C9"/><polygon points="64.14,23.13 59.90,13.23 58.61,33.86" fill="#18B5C9"/><polygon points="58.20,45.47 76.87,35.86 64.14,23.13 54.53,41.80" fill="#FFFFFF"/><polygon points="73.05,32.04 92.14,12.95 87.05,7.86 67.96,26.95" fill="#FFFFFF"/></g>
+    <g transform="rotate(270 50 50)"><polygon points="76.87,35.86 86.77,40.10 66.14,41.39" fill="#18B5C9"/><polygon points="64.14,23.13 59.90,13.23 58.61,33.86" fill="#18B5C9"/><polygon points="58.20,45.47 76.87,35.86 64.14,23.13 54.53,41.80" fill="#FFFFFF"/><polygon points="73.05,32.04 92.14,12.95 87.05,7.86 67.96,26.95" fill="#FFFFFF"/></g>
+    <circle cx="50" cy="50" r="7.4" fill="#F5A623"/>
+  </g>
 </svg>

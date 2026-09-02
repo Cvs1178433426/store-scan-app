@@ -9,6 +9,8 @@ import { ThemeToggle } from "../../components/ThemeToggle";
 import { LanguageToggle } from "../../components/LanguageToggle";
 import { CurrencyToggle } from "../../components/CurrencyToggle";
 import { BrandLockup } from "../../components/BrandLockup";
+import { SecurityFactors } from "../../components/SecurityFactors";
+import { BuildMarker } from "../../components/BuildMarker";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -40,8 +42,9 @@ export default function SettingsPage() {
     <main className="container work-container">
       <header className="work-hero compact"><BrandLockup compact /><h1>Settings</h1><p>{user.name} · {user.email}</p></header>
       <section className="card"><h2>Preferences</h2><ThemeToggle /><LanguageToggle /><CurrencyToggle /></section>
-      <section className="card"><h2>Security</h2><form onSubmit={handleChangePassword} className="form-stack"><label>Current password<input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required /></label><label>New password<input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={12} /></label><label>Confirm new password<input type="password" value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} required minLength={12} /></label><button type="submit" disabled={changingPassword}>{changingPassword ? "Changing…" : "Change password"}</button></form></section>
+      <section className="card"><h2>Security</h2><SecurityFactors initiallyEnabled={Boolean(user.mfaEnabled)} initiallyPhoneVerified={Boolean(user.phoneVerified)} phoneLast4={user.phoneLast4} /><hr /><form onSubmit={handleChangePassword} className="form-stack"><label>Current password<input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required /></label><label>New password<input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={12} /></label><label>Confirm new password<input type="password" value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} required minLength={12} /></label><button type="submit" disabled={changingPassword}>{changingPassword ? "Changing…" : "Change password"}</button></form></section>
       <section className="card"><h2>Session</h2><div className="work-footer-actions"><button type="button" className="secondary" onClick={() => void logout()}>Sign out on this device</button><button type="button" className="secondary" onClick={() => void logoutAll()}>Sign out on all devices</button></div></section>
+      <BuildMarker />
     </main>
   );
 }

@@ -11,6 +11,26 @@ enum UserRole {
   GENERAL
 }
 
+enum AccountStatus {
+  PENDING_PHONE_VERIFICATION
+  ACTIVE
+  DISABLED
+}
+
+enum MfaMethod {
+  SMS
+  TOTP
+  RECOVERY_CODE
+}
+
+enum MfaChallengePurpose {
+  REGISTRATION
+  LOGIN
+  PASSWORD_RESET
+  PHONE_CHANGE
+  FACTOR_REMOVAL
+}
+
 enum OrganizationRole {
   OWNER
   ADMIN
@@ -152,22 +172,33 @@ enum TaskRolloverPolicy {
 }
 
 model User {
-  id                  String    @id @default(cuid())
-  name                String
-  email               String    @unique
-  employeeNumber      String?   @unique
-  passwordHash        String
-  recoveryPinHash     String?
-  recoveryFailureCount Int     @default(0)
-  recoveryLockedUntil DateTime?
-  mfaSecretEncrypted  String?
-  mfaEnabled          Boolean   @default(false)
-  mfaBackupCodeHashes Json?
-  role                UserRole  @default(GENERAL)
-  isActive            Boolean   @default(true)
-  tokenVersion        Int       @default(0)
-  jobTitle            JobTitle?
-  createdAt           DateTime  @default(now())
+  id                        String        @id @default(cuid())
+  name                      String
+  email                     String        @unique
+  employeeNumber            String?       @unique
+  passwordHash              String
+  recoveryPinHash           String?
+  recoveryFailureCount      Int           @default(0)
+  recoveryLockedUntil       DateTime?
+  mfaSecretEncrypted        String?
+  mfaEnabled                Boolean       @default(false)
+  mfaBackupCodeHashes       Json?
+  role                      UserRole      @default(GENERAL)
+  accountStatus             AccountStatus @default(ACTIVE)
+  isActive                  Boolean       @default(true)
+  tokenVersion              Int           @default(0)
+  phoneEncrypted            String?
+  phoneEncryptionKeyVersion Int?
+  phoneLookupHash           String?       @unique
+  phoneLookupKeyVersion     Int?
+  phoneLast4                String?
+  phoneVerifiedAt           DateTime?
+  phoneVersion              Int           @default(0)
+  phoneConsentAt            DateTime?
+  phoneConsentVersion       String?
+  phoneConsentSource        String?
+  jobTitle                  JobTitle?
+  createdAt                 DateTime      @default(now())
 
   createdItems             Item[]                   @relation("ItemCreatedBy")
   movements                StockMovement[]
@@ -184,10 +215,70 @@ model User {
   assignedTasks            TaskAssignment[]         @relation("TaskAssignedTo")
   completedTasks           TaskAssignment[]         @relation("TaskCompletedBy")
   taskAssignmentEvents     TaskAssignmentEvent[]    @relation("TaskAssignmentEventActor")
+  mfaChallenges            MfaChallenge[]
+  securityAuditEvents      SecurityAuditEvent[]     @relation("SecurityAuditTarget")
+  securityActions          SecurityAuditEvent[]     @relation("SecurityAuditActor")
 
+  @@index([accountStatus])
   @@index([isActive])
   @@index([jobTitle, isActive])
   @@index([recoveryLockedUntil])
+}
+
+model MfaChallenge {
+  id                 String              @id @default(cuid())
+  userId             String?
+  pendingEmail       String?
+  phoneLookupHash    String?
+  purpose            MfaChallengePurpose
+  method             MfaMethod
+  destinationVersion Int?
+  providerRef        String?
+  expiresAt          DateTime
+  incorrectAttempts  Int                 @default(0)
+  consumedAt         DateTime?
+  invalidatedAt      DateTime?
+  createdAt          DateTime            @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, createdAt])
+  @@index([expiresAt])
+  @@index([phoneLookupHash, createdAt])
+}
+
+model VerificationRateLimit {
+  id          String   @id @default(cuid())
+  tenantScope String
+  action      String
+  keyHash     String
+  windowStart DateTime
+  count       Int      @default(0)
+  limit       Int
+  expiresAt   DateTime
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantScope, action, keyHash, windowStart])
+  @@index([expiresAt])
+}
+
+model SecurityAuditEvent {
+  id             String     @id @default(cuid())
+  eventType      String
+  outcome        String
+  method         MfaMethod?
+  actorUserId    String?
+  targetUserId   String?
+  safeReasonCode String?
+  correlationId  String
+  createdAt      DateTime   @default(now())
+
+  actorUser  User? @relation("SecurityAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  targetUser User? @relation("SecurityAuditTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId, createdAt])
+  @@index([targetUserId, createdAt])
+  @@index([eventType, createdAt])
 }
 
 model Organization {
@@ -205,7 +296,7 @@ model Organization {
   inventoryTransactions InventoryTransaction[]
   taskTemplates         TaskTemplate[]
   taskAssignments       TaskAssignment[]
-  taskAssignmentEvents   TaskAssignmentEvent[]
+  taskAssignmentEvents  TaskAssignmentEvent[]
 
   @@index([isActive])
 }
@@ -266,8 +357,8 @@ model Site {
   inventoryTransactions InventoryTransaction[]
   taskTemplates         TaskTemplate[]
   taskAssignments       TaskAssignment[]
-  taskAssignmentEvents   TaskAssignmentEvent[]
-  memberships            SiteMembership[]
+  taskAssignmentEvents  TaskAssignmentEvent[]
+  memberships           SiteMembership[]
 
   @@unique([organizationId, code])
   @@index([organizationId, isActive])
@@ -681,33 +772,33 @@ model TaskTemplate {
 }
 
 model TaskAssignment {
-  id             String       @id @default(cuid())
+  id             String             @id @default(cuid())
   templateId     String?
   idempotencyKey String?
   organizationId String
   siteId         String?
   assignedToId   String
   jobTitle       JobTitle?
-  recurrence     TaskRecurrence @default(ONCE)
+  recurrence     TaskRecurrence     @default(ONCE)
   rolloverPolicy TaskRolloverPolicy @default(REMAIN_OVERDUE)
   title          String
   instructions   String?
-  scheduledDate  DateTime     @db.Date
+  scheduledDate  DateTime           @db.Date
   dueAt          DateTime?
-  status         TaskStatus   @default(OPEN)
-  priority       TaskPriority @default(NORMAL)
+  status         TaskStatus         @default(OPEN)
+  priority       TaskPriority       @default(NORMAL)
   employeeNote   String?
   managerNote    String?
   completedAt    DateTime?
   completedById  String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
-  template     TaskTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  site         Site?         @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  assignedTo   User          @relation("TaskAssignedTo", fields: [assignedToId], references: [id], onDelete: Cascade)
-  completedBy  User?         @relation("TaskCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  template     TaskTemplate?         @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  site         Site?                 @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  assignedTo   User                  @relation("TaskAssignedTo", fields: [assignedToId], references: [id], onDelete: Cascade)
+  completedBy  User?                 @relation("TaskCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
   events       TaskAssignmentEvent[]
 
   @@unique([templateId, assignedToId, scheduledDate])
@@ -718,17 +809,17 @@ model TaskAssignment {
 }
 
 model TaskAssignmentEvent {
-  id             String   @id @default(cuid())
-  assignmentId   String
-  organizationId String
-  siteId         String?
-  actorUserId    String?
-  action         String
+  id               String      @id @default(cuid())
+  assignmentId     String
+  organizationId   String
+  siteId           String?
+  actorUserId      String?
+  action           String
   fromStatus       TaskStatus?
   toStatus         TaskStatus?
   fromAssignedToId String?
   toAssignedToId   String?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime    @default(now())
 
   assignment   TaskAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
   organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)

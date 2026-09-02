@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
-import { API_URL } from "../../lib/api";
-import { BRAND_NAME } from "../../lib/brand";
+import { useReducer, useRef, useState, type FormEvent } from "react";
 import { BrandLockup } from "../../components/BrandLockup";
+import { VerificationCodeForm } from "../../components/VerificationCodeForm";
+import { ApiError, apiJson } from "../../lib/api";
+import { createAuthFlow, formatWaitTime, reduceAuthFlow, type VerificationMethod } from "../../lib/authFlow";
 
 const SPECIALS = "!@#$%^&*";
 
@@ -19,60 +20,205 @@ function passwordError(password: string): string | null {
 }
 
 export default function ForgotPasswordPage() {
-  const [identifier, setIdentifier] = useState("");
-  const [pin, setPin] = useState("");
+  const [flow, dispatch] = useReducer(reduceAuthFlow, "email", createAuthFlow);
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPasswords, setShowPasswords] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  async function requestRecovery(method: VerificationMethod) {
+    await apiJson<{ ok: true }>("/api/auth/password-recovery/start", {
+      method: "POST",
+      body: JSON.stringify({ email, method }),
+    });
+  }
+
+  async function startRecovery(event: FormEvent) {
+    event.preventDefault();
     setError(null);
-    setMessage(null);
-    const ruleError = passwordError(password);
-    if (ruleError) return setError(ruleError);
-    if (password !== confirmPassword) return setError("Passwords do not match.");
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/auth/recover/password`, {
+      await requestRecovery("SMS");
+      dispatch({ type: "CODE_SENT", now: Date.now() });
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 429) {
+        setError(caught.retryAfterSeconds
+          ? `Too many requests. Try again in ${formatWaitTime(caught.retryAfterSeconds)}.`
+          : "Too many requests. Please try again later.");
+      } else {
+        setError("We could not start password recovery. Please try again.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function resendCode() {
+    setError(null);
+    setLoading(true);
+    try {
+      await requestRecovery("SMS");
+      dispatch({ type: "CODE_SENT", now: Date.now() });
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 429) {
+        const wait = caught.retryAfterSeconds ?? 30;
+        dispatch({ type: "RETRY_AFTER", retryAfterSeconds: wait, now: Date.now() });
+        setError(`Please wait ${formatWaitTime(wait)} before requesting another code.`);
+      } else {
+        setError("We could not send another code. Please try again.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function selectMethod(method: Exclude<VerificationMethod, "SMS">) {
+    setError(null);
+    setLoading(true);
+    try {
+      await requestRecovery(method);
+      dispatch({ type: "METHOD_SELECTED", method });
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 429) {
+        setError(caught.retryAfterSeconds
+          ? `Too many requests. Try again in ${formatWaitTime(caught.retryAfterSeconds)}.`
+          : caught.message);
+      } else {
+        setError("That backup method could not be started. You can start again and use SMS.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function completeRecovery(code: string) {
+    setError(null);
+    const ruleError = passwordError(password);
+    if (ruleError) {
+      setError(ruleError);
+      passwordRef.current?.focus();
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.");
+      passwordRef.current?.focus();
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await apiJson<{ ok: true }>("/api/auth/password-recovery/complete", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier, recoveryPin: pin, newPassword: password }),
+        body: JSON.stringify({ code, newPassword: password }),
       });
-      if (!res.ok) { setError("We could not verify that account. Check your information, or use Need Help."); return; }
-      setMessage("Password changed successfully. You can sign in now with your new password.");
       setPassword("");
       setConfirmPassword("");
-    } catch {
-      setError(`Unable to connect to ${BRAND_NAME}. Please try again.`);
-    } finally { setLoading(false); }
+      dispatch({ type: "VERIFIED" });
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 429) {
+        dispatch({ type: "LOCKED", retryAfterSeconds: caught.retryAfterSeconds ?? 900, now: Date.now() });
+      } else if (caught instanceof ApiError && caught.status === 503) {
+        dispatch({ type: "PROVIDER_OUTAGE" });
+        setError("Verification is temporarily unavailable. Your password was not changed.");
+      } else {
+        dispatch({ type: "CODE_REJECTED" });
+        setError("That verification code is not correct or has expired. Your password was not changed.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function restart() {
+    dispatch({ type: "RESTART" });
+    setPassword("");
+    setConfirmPassword("");
+    setError(null);
+  }
+
+  if (flow.step === "complete") {
+    return (
+      <main className="auth-page">
+        <section className="auth-card" aria-labelledby="recovery-complete-title">
+          <BrandLockup />
+          <h1 id="recovery-complete-title">Password changed</h1>
+          <p>Your old sessions have ended. Sign in again with your new password.</p>
+          <Link className="auth-primary-link" href="/login">Back to sign in</Link>
+        </section>
+      </main>
+    );
+  }
+
+  if (flow.step === "verification") {
+    const heading = flow.method === "SMS"
+      ? "Check your text messages"
+      : flow.method === "TOTP"
+        ? "Use your authenticator"
+        : "Use a recovery code";
+    return (
+      <main className="auth-page">
+        <section className="auth-card" aria-labelledby="recovery-code-title">
+          <BrandLockup />
+          <h1 id="recovery-code-title">{heading}</h1>
+          <p className="auth-intro">
+            {flow.method === "SMS"
+              ? "If that email belongs to an active account, we sent a code to its verified phone."
+              : "Enter your backup verification and choose a new password."}
+          </p>
+          <VerificationCodeForm
+            key={flow.method}
+            method={flow.method}
+            resendAvailableAt={flow.resendAvailableAt}
+            lockedUntil={flow.lockedUntil}
+            busy={loading}
+            error={error}
+            submitLabel="Verify and change password"
+            onSubmit={completeRecovery}
+            onResend={flow.method === "SMS" ? resendCode : undefined}
+            onRestart={restart}
+            onSelectMethod={selectMethod}
+          >
+            <details className="auth-details">
+              <summary>New password requirements</summary>
+              <p>Use at least 10 characters. Do not start with a number. Include uppercase, lowercase, a number, and one of: ! @ # $ % ^ &amp; *</p>
+            </details>
+            <div className="auth-field">
+              <label htmlFor="recovery-password">New password</label>
+              <input ref={passwordRef} id="recovery-password" type={showPasswords ? "text" : "password"} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={10} required />
+            </div>
+            <div className="auth-field">
+              <label htmlFor="recovery-confirm-password">Confirm new password</label>
+              <input id="recovery-confirm-password" type={showPasswords ? "text" : "password"} autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={10} required />
+            </div>
+            <label className="auth-checkbox">
+              <input type="checkbox" checked={showPasswords} onChange={(event) => setShowPasswords(event.target.checked)} />
+              Show password
+            </label>
+          </VerificationCodeForm>
+        </section>
+      </main>
+    );
   }
 
   return (
-    <main className="container">
-      <div style={{ margin: "24px 0" }}><BrandLockup /></div>
-      <h1>Forgot Password?</h1>
-      <p>Verify your identity with your email or Employee Number and your 6-digit Recovery PIN.</p>
-      <form onSubmit={submit} className="form">
-        <input type="text" autoCapitalize="none" autoComplete="username" placeholder="Email or Employee Number" value={identifier} onChange={(e) => setIdentifier(e.target.value)} required />
-        <input type="password" inputMode="numeric" autoComplete="off" placeholder="6-digit Recovery PIN" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} pattern="\d{6}" required />
-        <div style={{ padding: "12px 14px", border: "1px solid #555", borderRadius: 8 }}>
-          <strong>New password requirements</strong>
-          <ul style={{ margin: "8px 0 0", paddingLeft: 22, lineHeight: 1.6 }}>
-            <li>At least 10 characters</li><li>Must not start with a number</li><li>At least one uppercase letter (A-Z)</li><li>At least one lowercase letter (a-z)</li><li>At least one number (0-9)</li><li>At least one special character: ! @ # $ % ^ &amp; *</li>
-          </ul>
-        </div>
-        <input type={showPasswords ? "text" : "password"} autoComplete="new-password" placeholder="New password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={10} required />
-        <input type={showPasswords ? "text" : "password"} autoComplete="new-password" placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} minLength={10} required />
-        <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={showPasswords} onChange={(e) => setShowPasswords(e.target.checked)} />Show password</label>
-        <button type="submit" disabled={loading}>{loading ? "Changing password..." : "Verify & Change Password"}</button>
-      </form>
-      {message && <p><strong>{message}</strong></p>}
-      {error && <p className="error-text">{error}</p>}
-      <p><Link href="/login">Back to Sign In</Link> · <Link href="/help">Need Help?</Link></p>
+    <main className="auth-page">
+      <section className="auth-card" aria-labelledby="recovery-title">
+        <BrandLockup />
+        <h1 id="recovery-title">Reset your password</h1>
+        <p className="auth-intro">Enter your work email. If it matches an active account, we will text its verified phone.</p>
+        <form className="form" onSubmit={startRecovery}>
+          <div className="auth-field">
+            <label htmlFor="recovery-email">Work email</label>
+            <input id="recovery-email" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" value={email} onChange={(event) => setEmail(event.target.value)} required />
+          </div>
+          <button type="submit" disabled={loading}>{loading ? "Sending code..." : "Text me a recovery code"}</button>
+          {error && <p className="error-text auth-message" role="alert" aria-live="polite">{error}</p>}
+        </form>
+        <p className="auth-footer"><Link href="/login">Back to sign in</Link> · <Link href="/help">Need help?</Link></p>
+      </section>
     </main>
   );
 }
