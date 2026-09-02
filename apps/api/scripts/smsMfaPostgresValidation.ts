@@ -94,7 +94,7 @@ async function seedUpgradeDatabase(): Promise<void> {
     const migrationCount = await client.query<{ count: string }>(
       "SELECT COUNT(*)::text AS count FROM \"_prisma_migrations\" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL",
     );
-    assert(Number(migrationCount.rows[0]?.count) === 29, "upgrade seed must run after exactly the 29 pre-SMS migrations");
+    assert(Number(migrationCount.rows[0]?.count) === 28, "upgrade seed must run after exactly the 28 pre-SMS migrations");
     await client.query(
       `INSERT INTO "User" ("id", "name", "email", "passwordHash", "role", "isActive", "createdAt")
        VALUES ($1, 'Upgrade Active', 'upgrade-active@example.test', 'unused', 'GENERAL', true, NOW()),

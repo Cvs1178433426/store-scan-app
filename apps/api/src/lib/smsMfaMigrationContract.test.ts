@@ -7,6 +7,10 @@ const rateLimitMigration = readFileSync(
   "utf8",
 );
 const ciWorkflow = readFileSync(new URL("../../../../.github/workflows/ci.yml", import.meta.url), "utf8");
+const postgresValidation = readFileSync(
+  new URL("../../scripts/smsMfaPostgresValidation.ts", import.meta.url),
+  "utf8",
+);
 
 describe("SMS MFA migration contract", () => {
   it("uses the same explicit, PostgreSQL-safe rate-limit index name in schema and SQL", () => {
@@ -25,6 +29,9 @@ describe("SMS MFA migration contract", () => {
     );
     expect(ciWorkflow).toContain(
       "mv prisma/migrations/20260909010000_drop_verification_send_bucket \"$upgrade_migrations\"/",
+    );
+    expect(postgresValidation).toContain(
+      "=== 28, \"upgrade seed must run after exactly the 28 pre-SMS migrations\"",
     );
   });
 });
