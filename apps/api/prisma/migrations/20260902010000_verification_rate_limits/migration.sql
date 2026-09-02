@@ -8,9 +8,9 @@ CREATE TABLE "VerificationRateLimit" (
   "limit" INTEGER NOT NULL,
   "expiresAt" TIMESTAMP(3) NOT NULL,
   "updatedAt" TIMESTAMP(3) NOT NULL,
-  CONSTRAINT "VerificationRateLimit_pkey" PRIMARY KEY ("id")
+  CONSTRAINT "VerificationRateLimit_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "VerificationRateLimit_scope_action_key_window_key"
+    UNIQUE ("tenantScope", "action", "keyHash", "windowStart")
 );
 
-CREATE UNIQUE INDEX "VerificationRateLimit_tenantScope_action_keyHash_windowStart_key"
-  ON "VerificationRateLimit"("tenantScope", "action", "keyHash", "windowStart");
 CREATE INDEX "VerificationRateLimit_expiresAt_idx" ON "VerificationRateLimit"("expiresAt");

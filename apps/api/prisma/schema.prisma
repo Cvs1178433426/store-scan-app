@@ -258,7 +258,7 @@ model VerificationRateLimit {
   expiresAt   DateTime
   updatedAt   DateTime @updatedAt
 
-  @@unique([tenantScope, action, keyHash, windowStart])
+  @@unique([tenantScope, action, keyHash, windowStart], map: "VerificationRateLimit_scope_action_key_window_key")
   @@index([expiresAt])
 }
 

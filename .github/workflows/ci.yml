@@ -127,6 +127,7 @@ jobs:
             done
           }
           trap restore_migrations EXIT
+          mv prisma/migrations/20260902010000_verification_rate_limits "$upgrade_migrations"/
           mv prisma/migrations/20260909000000_sms_first_mfa "$upgrade_migrations"/
           mv prisma/migrations/20260909010000_drop_verification_send_bucket "$upgrade_migrations"/
           DATABASE_URL="$UPGRADE_DATABASE_URL" npx prisma migrate deploy
