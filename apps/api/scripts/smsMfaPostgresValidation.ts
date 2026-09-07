@@ -17,8 +17,8 @@ import {
 import type { VerificationProvider } from "../src/lib/verificationProvider.js";
 import { PrismaVerificationPolicyStore, VerificationPolicy } from "../src/lib/verificationPolicy.js";
 
-const EXPECTED_MIGRATION_COUNT = 40;
-const LATEST_MIGRATION = "20260909090000_phone_recovery_email_decoys";
+const EXPECTED_MIGRATION_COUNT = 41;
+const LATEST_MIGRATION = "20260909100000_security_audit_integrity";
 const LEGACY_ACTIVE_ID = "sms-upgrade-active-user";
 const LEGACY_DISABLED_ID = "sms-upgrade-disabled-user";
 const SMS_CODE = "654321";

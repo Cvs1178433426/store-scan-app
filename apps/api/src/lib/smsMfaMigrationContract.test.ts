@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const schema = readFileSync(new URL("../../prisma/schema.prisma", import.meta.url), "utf8");
@@ -58,6 +58,12 @@ const postgresValidation = readFileSync(
   new URL("../../scripts/smsMfaPostgresValidation.ts", import.meta.url),
   "utf8",
 );
+const migrationNames = readdirSync(new URL("../../prisma/migrations/", import.meta.url), {
+  withFileTypes: true,
+})
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort();
 
 describe("SMS MFA migration contract", () => {
   it("keeps the Prisma MFA method order aligned with PostgreSQL migration history", () => {
@@ -90,6 +96,15 @@ describe("SMS MFA migration contract", () => {
     );
     expect(schema).toMatch(
       /model PhoneRecoveryCase\s*{[\s\S]*?updatedAt\s+DateTime\s+@default\(now\(\)\)\s+@updatedAt[\s\S]*?}/,
+    );
+  });
+
+  it("keeps PostgreSQL validation migration expectations current", () => {
+    expect(postgresValidation).toContain(
+      `const EXPECTED_MIGRATION_COUNT = ${migrationNames.length};`,
+    );
+    expect(postgresValidation).toContain(
+      `const LATEST_MIGRATION = "${migrationNames.at(-1)}";`,
     );
   });
 
