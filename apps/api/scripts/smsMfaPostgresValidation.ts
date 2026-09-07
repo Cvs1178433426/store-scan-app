@@ -384,12 +384,6 @@ async function validateFreshDatabase(): Promise<void> {
     console.log(`- ${durableRows} subject rate-limit buckets persisted and enforced across store instances`);
   } finally {
     await app.close();
-    if (userId) {
-      await prisma.securityAuditEvent.deleteMany({ where: { OR: [{ actorUserId: userId }, { targetUserId: userId }] } });
-      await prisma.user.deleteMany({ where: { id: userId } });
-    } else {
-      await prisma.user.deleteMany({ where: { email } });
-    }
     await prisma.verificationRateLimit.deleteMany();
     await prisma.$disconnect();
   }

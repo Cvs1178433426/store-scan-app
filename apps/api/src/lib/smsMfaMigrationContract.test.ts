@@ -58,6 +58,10 @@ const postgresValidation = readFileSync(
   new URL("../../scripts/smsMfaPostgresValidation.ts", import.meta.url),
   "utf8",
 );
+const phoneRecoveryPostgresValidation = readFileSync(
+  new URL("../../scripts/phoneRecoveryPostgresValidation.ts", import.meta.url),
+  "utf8",
+);
 const migrationNames = readdirSync(new URL("../../prisma/migrations/", import.meta.url), {
   withFileTypes: true,
 })
@@ -106,6 +110,13 @@ describe("SMS MFA migration contract", () => {
     expect(postgresValidation).toContain(
       `const LATEST_MIGRATION = "${migrationNames.at(-1)}";`,
     );
+  });
+
+  it("does not erase immutable audit evidence during disposable database validation", () => {
+    for (const validationScript of [postgresValidation, phoneRecoveryPostgresValidation]) {
+      expect(validationScript).not.toContain("securityAuditEvent.deleteMany");
+      expect(validationScript).not.toMatch(/user\.deleteMany\(\{ where: \{ id:/);
+    }
   });
 
   it("uses the same explicit, PostgreSQL-safe rate-limit index name in schema and SQL", () => {

@@ -115,9 +115,7 @@ async function main() {
     console.log("Phone recovery PostgreSQL validation passed: durable decoy, state transitions, queued dispatch, alias claim, concurrency, revocation, and audit.");
   } finally {
     await prisma.mfaChallenge.deleteMany({ where: { id: decoyEmailChallengeId } });
-    await prisma.securityAuditEvent.deleteMany({ where: { correlationId: { in: [caseId, `self-${suffix}`] } } });
     await prisma.phoneRecoveryCase.deleteMany({ where: { id: { in: [caseId, `self-${suffix}`] } } });
-    await prisma.user.deleteMany({ where: { id: { in: [targetId, adminId] } } });
     await prisma.$disconnect();
   }
 }
