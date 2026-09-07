@@ -163,6 +163,9 @@ export async function backupRoutes(app: FastifyInstance) {
 
     // POST /api/backup/restore
     admin.post("/restore", async (request, reply) => {
+      if (process.env.SMS_MFA_ENABLED === "true") {
+        return reply.code(409).send({ error: "Backup restore is unavailable while SMS MFA is enabled." });
+      }
       const file = await request.file({ limits: { fileSize: 500 * 1024 * 1024 } }); // 500MB
       if (!file) return reply.code(400).send({ error: t("noBackupFileUploaded", request.locale) });
 

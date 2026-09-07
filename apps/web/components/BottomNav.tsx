@@ -21,7 +21,7 @@ const PUBLIC_AUTH_ROUTES = new Set(["/login", "/register", "/forgot-password", "
 export function BottomNav() {
   const pathname = usePathname();
   const { user, isAdmin } = useAuth();
-  if (PUBLIC_AUTH_ROUTES.has(pathname) || pathname.startsWith("/i/")) return null;
+  if (!user || PUBLIC_AUTH_ROUTES.has(pathname) || pathname.startsWith("/i/")) return null;
   const likelyManager = isAdmin || user?.taskManager === true;
   const visibleItems = NAV_ITEMS.filter((item) => (!item.adminOnly || isAdmin) && (!item.managerOnly || likelyManager));
 

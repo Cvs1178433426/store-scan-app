@@ -59,6 +59,8 @@ Until this contract passes, do not expand the pilot into purchasing, receiving, 
 
 ### Security/accountability
 - Authenticated users only.
+- Same-phone enrollment uses a texted six-digit code; scanning a QR code is never required to reach Count.
+- Authenticator QR enrollment is an optional signed-in backup setting only.
 - Site/organization boundaries enforced server-side.
 - Counter and supervisor actions are attributable to a user.
 - No client-supplied organization/site identifier may bypass membership checks.
@@ -107,3 +109,5 @@ The MVP is **PILOT READY** only when:
 6. A controlled test catalog and scripted mock-store count reconcile exactly.
 
 Anything not meeting these conditions is implemented/in test—not marketed as production-ready.
+
+Record SMS and physical iPhone evidence in `docs/SMS-MFA-PHYSICAL-ACCEPTANCE.md`.

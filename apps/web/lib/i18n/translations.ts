@@ -450,6 +450,7 @@ const dict = {
 
   // users
   usersTitle: { ko: "가족 구성원 계정", en: "Family accounts" },
+  userSelfRegistrationHelp: { ko: "새 직원은 로그인 화면에서 등록을 선택하고 자신의 이메일과 휴대폰 번호를 확인해야 합니다.", en: "To add an employee, ask them to choose Register on the sign-in screen and verify their own email address and mobile phone." },
   roleGeneral: { ko: "일반", en: "General" },
   roleAdmin: { ko: "관리자", en: "Admin" },
   createAccountButton: { ko: "계정 만들기", en: "Create account" },

@@ -37,6 +37,22 @@ export const registerSchema = z.object({
   recoveryPin: recoveryPinSchema,
 });
 
+export const registerStartSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  email: emailSchema,
+  phone: z.string().trim().min(10).max(32),
+  password: passwordSchema,
+  smsConsent: z.literal(true),
+  consentVersion: z.string().trim().min(1).max(64),
+  turnstileToken: z.string().trim().min(1).max(4096),
+});
+
+export const registerCheckSchema = z.object({
+  code: z.string().regex(/^\d{6}$/, "Verification code must be exactly 6 digits."),
+});
+
+export const registerResendSchema = z.object({});
+
 export const recoverUserIdSchema = z.object({
   email: emailSchema,
   recoveryPin: recoveryPinSchema,
@@ -45,6 +61,16 @@ export const recoverUserIdSchema = z.object({
 export const recoverPasswordSchema = z.object({
   identifier: z.string().trim().min(1),
   recoveryPin: recoveryPinSchema,
+  newPassword: passwordSchema,
+});
+
+export const passwordRecoveryStartSchema = z.object({
+  email: emailSchema,
+  method: z.enum(["SMS", "TOTP", "RECOVERY_CODE"]).default("SMS"),
+});
+
+export const passwordRecoveryCompleteSchema = z.object({
+  code: z.string().trim().min(1).max(128),
   newPassword: passwordSchema,
 });
 
@@ -65,6 +91,11 @@ export const updateProfileSchema = z.object({
 export type BootstrapAdminInput = z.infer<typeof bootstrapAdminSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
+export type RegisterStartInput = z.infer<typeof registerStartSchema>;
+export type RegisterCheckInput = z.infer<typeof registerCheckSchema>;
+export type RegisterResendInput = z.infer<typeof registerResendSchema>;
 export type RecoverUserIdInput = z.infer<typeof recoverUserIdSchema>;
 export type RecoverPasswordInput = z.infer<typeof recoverPasswordSchema>;
+export type PasswordRecoveryStartInput = z.infer<typeof passwordRecoveryStartSchema>;
+export type PasswordRecoveryCompleteInput = z.infer<typeof passwordRecoveryCompleteSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;

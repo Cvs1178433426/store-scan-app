@@ -4,6 +4,8 @@ import bcrypt from "bcryptjs";
 const BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 const STEP_SECONDS = 30;
 const DIGITS = 6;
+const BACKUP_CODE_SLOTS = 8;
+const DECOY_BACKUP_CODE_HASH = "$2b$10$wqWkbESLMw8aldmUNVxT8.2fnXTJusO2Zv.FepzjwihyRSorRSkmW";
 
 function key(): Buffer {
   const source = process.env.MFA_ENCRYPTION_KEY || "dev-mfa-encryption-key-change-me";
@@ -93,4 +95,38 @@ export async function consumeBackupCode(code: string, hashes: string[]): Promise
     if (await bcrypt.compare(normalized, hashes[i])) return { valid: true, remaining: hashes.filter((_, index) => index !== i) };
   }
   return { valid: false, remaining: hashes };
+}
+
+export async function verifyBackupCodeConstantWork(
+  code: string,
+  hashes: string[],
+  compare: (candidate: string, hash: string) => Promise<boolean> = bcrypt.compare,
+): Promise<boolean> {
+  const { matches, storedCount } = await compareBackupCodeSlots(code, hashes, compare);
+  return matches.some((matched, index) => index < storedCount && matched);
+}
+
+async function compareBackupCodeSlots(
+  code: string,
+  hashes: string[],
+  compare: (candidate: string, hash: string) => Promise<boolean>,
+): Promise<{ matches: boolean[]; storedCount: number }> {
+  const normalized = code.trim().toUpperCase();
+  const candidates = hashes.slice(0, BACKUP_CODE_SLOTS);
+  const storedCount = candidates.length;
+  while (candidates.length < BACKUP_CODE_SLOTS) candidates.push(DECOY_BACKUP_CODE_HASH);
+  const matches = await Promise.all(candidates.map((hash) => compare(normalized, hash)));
+  return { matches, storedCount };
+}
+
+export async function consumeBackupCodeConstantWork(
+  code: string,
+  hashes: string[],
+  compare: (candidate: string, hash: string) => Promise<boolean> = bcrypt.compare,
+): Promise<{ valid: boolean; remaining: string[] }> {
+  const { matches, storedCount } = await compareBackupCodeSlots(code, hashes, compare);
+  const matchedIndex = matches.findIndex((matched, index) => index < storedCount && matched);
+  return matchedIndex < 0
+    ? { valid: false, remaining: hashes }
+    : { valid: true, remaining: hashes.filter((_, index) => index !== matchedIndex) };
 }

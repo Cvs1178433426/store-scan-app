@@ -25,6 +25,54 @@ services:
         sync: false
       - key: COOKIE_SECURE
         value: "true"
+      - key: SMS_MFA_ENABLED
+        sync: false
+      - key: ENABLE_LEGACY_INVENTORY_FEATURES
+        value: "false"
+      - key: SMS_GLOBAL_SEND_LIMIT_PER_MINUTE
+        sync: false
+      - key: SMS_MFA_MIGRATION_DEADLINE
+        sync: false
+      - key: SMS_MFA_BOOTSTRAP_ADMIN_EMAIL
+        sync: false
+      - key: SMS_MFA_BOOTSTRAP_ADMIN_PHONE
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_API_KEY_SID
+        sync: false
+      - key: TWILIO_VERIFY_API_KEY_TYPE
+        sync: false
+      - key: TWILIO_API_KEY_SECRET
+        sync: false
+      - key: TWILIO_VERIFY_SERVICE_SID
+        sync: false
+      - key: TWILIO_NOTIFICATION_API_KEY_SID
+        sync: false
+      - key: TWILIO_NOTIFICATION_API_KEY_TYPE
+        sync: false
+      - key: TWILIO_NOTIFICATION_API_KEY_SECRET
+        sync: false
+      - key: TWILIO_MESSAGING_SERVICE_SID
+        sync: false
+      - key: SENDGRID_RECOVERY_API_KEY
+        sync: false
+      - key: MFA_RECOVERY_FROM_EMAIL
+        sync: false
+      - key: MFA_RECOVERY_PUBLIC_URL
+        sync: false
+      - key: EMAIL_OTP_HMAC_KEY
+        sync: false
+      - key: TURNSTILE_SECRET_KEY
+        sync: false
+      - key: TURNSTILE_EXPECTED_HOSTNAME
+        sync: false
+      - key: PHONE_ENCRYPTION_KEYS
+        sync: false
+      - key: PHONE_LOOKUP_HMAC_KEYS
+        sync: false
+      - key: RATE_LIMIT_HMAC_KEY
+        sync: false
 
   - type: web
     name: continuixai-ops-web
@@ -41,6 +89,8 @@ services:
         value: production
       - key: PORT
         value: 10000
+      - key: NEXT_PUBLIC_TURNSTILE_SITE_KEY
+        sync: false
 
 databases:
   - name: continuixai-ops-db
