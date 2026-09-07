@@ -14,6 +14,10 @@ const phoneRecoveryEnumMigration = readFileSync(
   new URL("../../prisma/migrations/20260909075000_phone_recovery_enums/migration.sql", import.meta.url),
   "utf8",
 );
+const phoneRecoveryMigration = readFileSync(
+  new URL("../../prisma/migrations/20260909080000_phone_recovery/migration.sql", import.meta.url),
+  "utf8",
+);
 const phoneAliasMigration = readFileSync(
   new URL("../../prisma/migrations/20260909020000_phone_lookup_aliases/migration.sql", import.meta.url),
   "utf8",
@@ -77,6 +81,15 @@ describe("SMS MFA migration contract", () => {
     );
     expect(schema).toContain(
       '@@unique([startedById], map: "StoreCountSession_one_active_per_user", where: raw("(status = \'ACTIVE\'::\\"StoreCountSessionStatus\\")"))',
+    );
+  });
+
+  it("keeps the recovery update timestamp default aligned with its migration", () => {
+    expect(phoneRecoveryMigration).toContain(
+      '"updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP',
+    );
+    expect(schema).toMatch(
+      /model PhoneRecoveryCase\s*{[\s\S]*?updatedAt\s+DateTime\s+@default\(now\(\)\)\s+@updatedAt[\s\S]*?}/,
     );
   });
 

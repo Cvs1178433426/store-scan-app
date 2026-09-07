@@ -325,7 +325,7 @@ model PhoneRecoveryCase {
   safeFailureReason                String?
   expiresAt                        DateTime
   createdAt                        DateTime            @default(now())
-  updatedAt                        DateTime            @updatedAt
+  updatedAt                        DateTime            @default(now()) @updatedAt
 
   targetUser         User                      @relation("PhoneRecoveryTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
   actorUser          User                      @relation("PhoneRecoveryActor", fields: [actorUserId], references: [id], onDelete: Restrict)
