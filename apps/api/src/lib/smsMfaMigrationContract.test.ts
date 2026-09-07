@@ -6,6 +6,14 @@ const rateLimitMigration = readFileSync(
   new URL("../../prisma/migrations/20260902010000_verification_rate_limits/migration.sql", import.meta.url),
   "utf8",
 );
+const smsFirstMfaMigration = readFileSync(
+  new URL("../../prisma/migrations/20260909000000_sms_first_mfa/migration.sql", import.meta.url),
+  "utf8",
+);
+const phoneRecoveryEnumMigration = readFileSync(
+  new URL("../../prisma/migrations/20260909075000_phone_recovery_enums/migration.sql", import.meta.url),
+  "utf8",
+);
 const phoneAliasMigration = readFileSync(
   new URL("../../prisma/migrations/20260909020000_phone_lookup_aliases/migration.sql", import.meta.url),
   "utf8",
@@ -48,6 +56,18 @@ const postgresValidation = readFileSync(
 );
 
 describe("SMS MFA migration contract", () => {
+  it("keeps the Prisma MFA method order aligned with PostgreSQL migration history", () => {
+    expect(smsFirstMfaMigration).toContain(
+      `CREATE TYPE "MfaMethod" AS ENUM ('SMS', 'TOTP', 'RECOVERY_CODE')`,
+    );
+    expect(phoneRecoveryEnumMigration).toContain(
+      `ALTER TYPE "MfaMethod" ADD VALUE IF NOT EXISTS 'EMAIL'`,
+    );
+    expect(schema).toMatch(
+      /enum MfaMethod\s*{\s*SMS\s*TOTP\s*RECOVERY_CODE\s*EMAIL\s*}/,
+    );
+  });
+
   it("uses the same explicit, PostgreSQL-safe rate-limit index name in schema and SQL", () => {
     const indexName = "VerificationRateLimit_scope_action_key_window_key";
 

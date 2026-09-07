@@ -19,9 +19,9 @@ enum AccountStatus {
 
 enum MfaMethod {
   SMS
-  EMAIL
   TOTP
   RECOVERY_CODE
+  EMAIL
 }
 
 enum MfaChallengePurpose {
