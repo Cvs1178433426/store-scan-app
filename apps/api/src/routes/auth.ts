@@ -340,7 +340,12 @@ export async function authRoutes(app: FastifyInstance) {
     if (!target) return reply.code(404).send({ error: t("userNotFound", request.locale) });
     await prisma.user.update({
       where: { id },
-      data: { accountStatus: "DISABLED", isActive: false, tokenVersion: { increment: 1 } },
+      data: {
+        accountStatus: "DISABLED",
+        isActive: false,
+        phoneVerifiedAt: null,
+        tokenVersion: { increment: 1 },
+      },
     });
     await prisma.organizationMembership.updateMany({ where: { userId: id }, data: { isActive: false } });
     invalidateTokenVersionCache(id);

@@ -1049,6 +1049,7 @@ describe("SMS-first MFA HTTP routes", () => {
       data: {
         accountStatus: "DISABLED",
         isActive: false,
+        phoneVerifiedAt: null,
         tokenVersion: { increment: 1 },
       },
     });

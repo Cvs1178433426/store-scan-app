@@ -346,7 +346,7 @@ async function validateFreshDatabase(): Promise<void> {
     assert(preDisableApi.statusCode === 204, `current API credential must be accepted before account disablement, got ${preDisableApi.statusCode}`);
     await prisma.user.update({
       where: { id: userId },
-      data: { accountStatus: "DISABLED", isActive: false },
+      data: { accountStatus: "DISABLED", isActive: false, phoneVerifiedAt: null },
     });
     const disabledApi = await app.inject({ method: "POST", url: "/api/auth/logout", headers: { authorization: `Bearer ${preDisableApiToken}` } });
     assert(
