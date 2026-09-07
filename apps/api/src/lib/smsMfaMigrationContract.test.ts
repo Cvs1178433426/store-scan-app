@@ -68,6 +68,18 @@ describe("SMS MFA migration contract", () => {
     );
   });
 
+  it("represents the one-open-recovery partial index in the Prisma schema", () => {
+    expect(schema).toMatch(
+      /generator client\s*{[^}]*previewFeatures\s*=\s*\["partialIndexes"\][^}]*}/s,
+    );
+    expect(schema).toContain(
+      '@@unique([targetUserId], map: "PhoneRecoveryCase_one_open_per_user_key", where: raw("(status = ANY (ARRAY[\'NOTICE_PENDING\'::\\"PhoneRecoveryStatus\\", \'EMAIL_PENDING\'::\\"PhoneRecoveryStatus\\", \'EMAIL_VERIFIED\'::\\"PhoneRecoveryStatus\\", \'PHONE_PENDING\'::\\"PhoneRecoveryStatus\\"]))"))',
+    );
+    expect(schema).toContain(
+      '@@unique([startedById], map: "StoreCountSession_one_active_per_user", where: raw("(status = \'ACTIVE\'::\\"StoreCountSessionStatus\\")"))',
+    );
+  });
+
   it("uses the same explicit, PostgreSQL-safe rate-limit index name in schema and SQL", () => {
     const indexName = "VerificationRateLimit_scope_action_key_window_key";
 

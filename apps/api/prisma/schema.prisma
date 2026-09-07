@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
@@ -263,33 +264,33 @@ model PhoneLookupAlias {
 }
 
 model MfaChallenge {
-  id                   String              @id @default(cuid())
-  userId               String?
-  pendingEmail         String?
-  phoneLookupHash      String?
-  phonePrefixHash      String?
-  accountRateLimitHash String?
-  phoneRecoveryCaseId  String?
-  localCodeDigest      Bytes?
-  purpose              MfaChallengePurpose
-  method               MfaMethod
-  destinationVersion   Int?
-  tokenVersionAtIssue  Int?
-  providerRef          String?
-  smsDestinationEncrypted           String?
+  id                                 String              @id @default(cuid())
+  userId                             String?
+  pendingEmail                       String?
+  phoneLookupHash                    String?
+  phonePrefixHash                    String?
+  accountRateLimitHash               String?
+  phoneRecoveryCaseId                String?
+  localCodeDigest                    Bytes?
+  purpose                            MfaChallengePurpose
+  method                             MfaMethod
+  destinationVersion                 Int?
+  tokenVersionAtIssue                Int?
+  providerRef                        String?
+  smsDestinationEncrypted            String?
   smsDestinationEncryptionKeyVersion Int?
-  smsDeliveryState                  SmsDeliveryState?
-  smsDeliveryLeaseId                String?
-  smsDeliveryLeaseAt                DateTime?
-  smsDeliveryAttemptedAt            DateTime?
-  smsDeliveryCompletedAt            DateTime?
-  expiresAt            DateTime
-  incorrectAttempts    Int                 @default(0)
-  consumedAt           DateTime?
-  invalidatedAt        DateTime?
-  createdAt            DateTime            @default(now())
+  smsDeliveryState                   SmsDeliveryState?
+  smsDeliveryLeaseId                 String?
+  smsDeliveryLeaseAt                 DateTime?
+  smsDeliveryAttemptedAt             DateTime?
+  smsDeliveryCompletedAt             DateTime?
+  expiresAt                          DateTime
+  incorrectAttempts                  Int                 @default(0)
+  consumedAt                         DateTime?
+  invalidatedAt                      DateTime?
+  createdAt                          DateTime            @default(now())
 
-  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
   phoneRecoveryCase PhoneRecoveryCase? @relation(fields: [phoneRecoveryCaseId], references: [id], onDelete: Cascade)
 
   @@index([userId, purpose, createdAt])
@@ -300,37 +301,38 @@ model MfaChallenge {
 }
 
 model PhoneRecoveryCase {
-  id                                String              @id @default(cuid())
-  targetUserId                      String
-  actorUserId                       String
-  status                            PhoneRecoveryStatus @default(NOTICE_PENDING)
-  caseReferenceHash                 String              @unique
-  tokenVersionAtIssue               Int
-  phoneVersionAtIssue               Int
-  pendingPhoneEncrypted             String?
-  pendingPhoneEncryptionKeyVersion  Int?
-  pendingPhoneLookupHash            String?
-  pendingPhoneLookupKeyVersion      Int?
-  pendingPhoneLast4                 String?
-  pendingConsentAt                  DateTime?
-  pendingConsentVersion             String?
-  noticeAcceptedAt                  DateTime?
-  emailVerifiedAt                   DateTime?
-  phoneVerifiedAt                   DateTime?
-  completedAt                       DateTime?
-  cancelledAt                       DateTime?
-  failedAt                          DateTime?
-  expiredAt                         DateTime?
-  safeFailureReason                 String?
-  expiresAt                         DateTime
-  createdAt                         DateTime            @default(now())
-  updatedAt                         DateTime            @updatedAt
+  id                               String              @id @default(cuid())
+  targetUserId                     String
+  actorUserId                      String
+  status                           PhoneRecoveryStatus @default(NOTICE_PENDING)
+  caseReferenceHash                String              @unique
+  tokenVersionAtIssue              Int
+  phoneVersionAtIssue              Int
+  pendingPhoneEncrypted            String?
+  pendingPhoneEncryptionKeyVersion Int?
+  pendingPhoneLookupHash           String?
+  pendingPhoneLookupKeyVersion     Int?
+  pendingPhoneLast4                String?
+  pendingConsentAt                 DateTime?
+  pendingConsentVersion            String?
+  noticeAcceptedAt                 DateTime?
+  emailVerifiedAt                  DateTime?
+  phoneVerifiedAt                  DateTime?
+  completedAt                      DateTime?
+  cancelledAt                      DateTime?
+  failedAt                         DateTime?
+  expiredAt                        DateTime?
+  safeFailureReason                String?
+  expiresAt                        DateTime
+  createdAt                        DateTime            @default(now())
+  updatedAt                        DateTime            @updatedAt
 
-  targetUser User @relation("PhoneRecoveryTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
-  actorUser  User @relation("PhoneRecoveryActor", fields: [actorUserId], references: [id], onDelete: Restrict)
-  challenges MfaChallenge[]
+  targetUser         User                      @relation("PhoneRecoveryTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  actorUser          User                      @relation("PhoneRecoveryActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  challenges         MfaChallenge[]
   provisionalAliases PhoneRecoveryPhoneAlias[]
 
+  @@unique([targetUserId], map: "PhoneRecoveryCase_one_open_per_user_key", where: raw("(status = ANY (ARRAY['NOTICE_PENDING'::\"PhoneRecoveryStatus\", 'EMAIL_PENDING'::\"PhoneRecoveryStatus\", 'EMAIL_VERIFIED'::\"PhoneRecoveryStatus\", 'PHONE_PENDING'::\"PhoneRecoveryStatus\"]))"))
   @@index([targetUserId, createdAt])
   @@index([actorUserId, createdAt])
   @@index([status, expiresAt])
@@ -764,6 +766,7 @@ model StoreCountSession {
   startedBy User?             @relation(fields: [startedById], references: [id], onDelete: SetNull)
   entries   StoreCountEntry[]
 
+  @@unique([startedById], map: "StoreCountSession_one_active_per_user", where: raw("(status = 'ACTIVE'::\"StoreCountSessionStatus\")"))
   @@index([siteId, status, startedAt])
   @@index([startedById, status])
   @@index([status, startedAt])
