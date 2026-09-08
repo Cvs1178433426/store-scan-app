@@ -32,6 +32,34 @@ async function createEmployeeNumber(): Promise<string> {
   throw new Error("Unable to allocate a unique employee number.");
 }
 
+async function findOrganizationScopedAdminTarget(adminUserId: string, targetUserId: string) {
+  return prisma.user.findFirst({
+    where: {
+      id: targetUserId,
+      organizationMemberships: {
+        some: {
+          isActive: true,
+          organization: {
+            isActive: true,
+            memberships: {
+              some: { userId: adminUserId, isActive: true, role: { in: ["OWNER", "ADMIN"] } },
+            },
+          },
+        },
+        none: {
+          isActive: true,
+          organization: {
+            isActive: true,
+            memberships: {
+              none: { userId: adminUserId, isActive: true, role: { in: ["OWNER", "ADMIN"] } },
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
 async function verifyRecoveryPin(user: {
   id: string;
   recoveryPinHash: string | null;
@@ -188,7 +216,7 @@ export async function authRoutes(app: FastifyInstance) {
   app.delete("/users/:id", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     if (id === request.user.sub) return reply.code(400).send({ error: t("cannotDeleteSelf", request.locale) });
-    const target = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+    const target = await findOrganizationScopedAdminTarget(request.user.sub, id);
     if (!target) return reply.code(404).send({ error: t("userNotFound", request.locale) });
     await prisma.user.update({ where: { id }, data: { isActive: false } });
     await prisma.organizationMembership.updateMany({ where: { userId: id }, data: { isActive: false } });
@@ -200,7 +228,7 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/users/:id/reset-password", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     if (id === request.user.sub) return reply.code(400).send({ error: t("cannotResetOwnPassword", request.locale) });
-    const target = await prisma.user.findUnique({ where: { id } });
+    const target = await findOrganizationScopedAdminTarget(request.user.sub, id);
     if (!target) return reply.code(404).send({ error: t("userNotFound", request.locale) });
     const temporaryPassword = randomBytes(12).toString("base64url");
     const passwordHash = await bcrypt.hash(temporaryPassword, 10);
@@ -213,10 +241,8 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/users/:id/reset-mfa", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     if (id === request.user.sub) return reply.code(400).send({ error: "Administrators cannot reset their own authenticator here." });
-    const target = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+    const target = await findOrganizationScopedAdminTarget(request.user.sub, id);
     if (!target) return reply.code(404).send({ error: t("userNotFound", request.locale) });
-    const sharedOrganization = await prisma.organizationMembership.findFirst({ where: { userId: request.user.sub, isActive: true, organization: { memberships: { some: { userId: id, isActive: true } } } }, select: { id: true } });
-    if (!sharedOrganization) return reply.code(404).send({ error: t("userNotFound", request.locale) });
     await prisma.user.update({ where: { id }, data: { mfaEnabled: false, mfaSecretEncrypted: null, mfaBackupCodeHashes: Prisma.DbNull, mfaLastTotpCounter: null } });
     await bumpTokenVersion(id);
     await revokeAllUserSessions(id);
