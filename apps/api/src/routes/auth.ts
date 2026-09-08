@@ -191,21 +191,53 @@ export async function authRoutes(app: FastifyInstance) {
     return { id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, jobTitle: user.jobTitle, taskManager, mfaEnabled: user.mfaEnabled };
   });
 
+  app.get("/user-organizations", { preHandler: [app.authenticate, app.requireAdmin] }, async (request) => {
+    const memberships = await prisma.organizationMembership.findMany({
+      where: {
+        userId: request.user.sub,
+        isActive: true,
+        role: { in: ["OWNER", "ADMIN"] },
+        organization: { isActive: true },
+      },
+      select: { organization: { select: { id: true, name: true } } },
+      orderBy: { organization: { name: "asc" } },
+    });
+    return memberships.map(({ organization }) => organization);
+  });
+
   app.post("/users", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
     const parsed = createUserSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
-    const { name, email, password, role } = parsed.data;
+    const { name, email, password, role, organizationId } = parsed.data;
     const [passwordHash, employeeNumber] = await Promise.all([bcrypt.hash(password, 10), createEmployeeNumber()]);
-    const adminMemberships = await prisma.organizationMembership.findMany({ where: { userId: request.user.sub, isActive: true, organization: { isActive: true } }, select: { organizationId: true, organization: { select: { sites: { where: { isActive: true }, select: { id: true } } } } } });
-    if (adminMemberships.length === 0) return reply.code(409).send({ error: "Administrator must belong to an active organization before creating employees." });
     const user = await prisma.$transaction(async (tx) => {
+      const managedOrganizations = await tx.$queryRaw<Array<{ organizationId: string }>>`
+        SELECT membership."organizationId"
+        FROM "OrganizationMembership" AS membership
+        INNER JOIN "Organization" AS organization
+          ON organization."id" = membership."organizationId"
+        WHERE membership."userId" = ${request.user.sub}
+          AND membership."organizationId" = ${organizationId}
+          AND membership."isActive" = TRUE
+          AND membership."role" IN ('OWNER', 'ADMIN')
+          AND organization."isActive" = TRUE
+        FOR UPDATE OF membership, organization
+      `;
+      if (managedOrganizations.length !== 1) return null;
+
+      const sites = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT site."id"
+        FROM "Site" AS site
+        WHERE site."organizationId" = ${organizationId}
+          AND site."isActive" = TRUE
+        FOR UPDATE OF site
+      `;
       const created = await tx.user.create({ data: { name, email, employeeNumber, passwordHash, role } });
-      for (const membership of adminMemberships) {
-        await tx.organizationMembership.create({ data: { organizationId: membership.organizationId, userId: created.id, role: role === "ADMIN" ? "ADMIN" : "VIEWER" } });
-        for (const site of membership.organization.sites) await tx.siteMembership.create({ data: { siteId: site.id, userId: created.id } });
-      }
+      await tx.organizationMembership.create({ data: { organizationId, userId: created.id, role: role === "ADMIN" ? "ADMIN" : "VIEWER" } });
+      for (const site of sites) await tx.siteMembership.create({ data: { siteId: site.id, userId: created.id } });
       return created;
     });
+    if (!user) return reply.code(404).send({ error: "Organization not found." });
     return reply.code(201).send({ id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, isActive: user.isActive });
   });
 

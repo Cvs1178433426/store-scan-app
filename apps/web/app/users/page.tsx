@@ -10,6 +10,8 @@ import type { User } from "../../lib/types";
 import { OneTimeSecrets, type OneTimeSecret } from "../../components/OneTimeSecrets";
 import { selectedSiteIds, toggleSiteSelection, type SiteAssignment } from "../../lib/siteAssignments";
 
+type OrganizationOption = { id: string; name: string };
+
 export default function UsersPage() {
   const router = useRouter();
   const { user, loading, isAdmin } = useAuth();
@@ -20,6 +22,9 @@ export default function UsersPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"ADMIN" | "GENERAL">("GENERAL");
+  const [organizations, setOrganizations] = useState<OrganizationOption[]>([]);
+  const [organizationId, setOrganizationId] = useState("");
+  const [organizationLoadError, setOrganizationLoadError] = useState(false);
   const [issuedSecrets, setIssuedSecrets] = useState<OneTimeSecret[] | null>(null);
   const [siteUserId, setSiteUserId] = useState<string | null>(null);
   const [sites, setSites] = useState<SiteAssignment[]>([]);
@@ -34,8 +39,24 @@ export default function UsersPage() {
     setUsers(await apiJson<User[]>("/api/auth/users"));
   }
 
+  async function refreshOrganizations() {
+    try {
+      const available = await apiJson<OrganizationOption[]>("/api/auth/user-organizations");
+      setOrganizations(available);
+      setOrganizationLoadError(false);
+      setOrganizationId((current) => {
+        if (available.some(({ id }) => id === current)) return current;
+        return available.length === 1 ? available[0].id : "";
+      });
+    } catch {
+      setOrganizations([]);
+      setOrganizationId("");
+      setOrganizationLoadError(true);
+    }
+  }
+
   useEffect(() => {
-    if (isAdmin) refresh();
+    if (isAdmin) void Promise.all([refresh(), refreshOrganizations()]);
   }, [isAdmin]);
 
   async function handleSubmit(e: FormEvent) {
@@ -43,7 +64,7 @@ export default function UsersPage() {
     try {
       await apiJson("/api/auth/users", {
         method: "POST",
-        body: JSON.stringify({ name, email, password, role }),
+        body: JSON.stringify({ name, email, password, role, organizationId }),
       });
       setName("");
       setEmail("");
@@ -130,11 +151,26 @@ export default function UsersPage() {
           onChange={(e) => setPassword(e.target.value)}
           required
         />
+        <label>
+          {t("organizationLabel")}
+          <select
+            name="organizationId"
+            value={organizationId}
+            onChange={(e) => setOrganizationId(e.target.value)}
+            required
+          >
+            <option value="">{t("selectOrganization")}</option>
+            {organizations.map((organization) => (
+              <option key={organization.id} value={organization.id}>{organization.name}</option>
+            ))}
+          </select>
+        </label>
+        {organizationLoadError && <p role="alert">{t("organizationLoadFailed")}</p>}
         <select value={role} onChange={(e) => setRole(e.target.value as "ADMIN" | "GENERAL")}>
           <option value="GENERAL">{t("roleGeneral")}</option>
           <option value="ADMIN">{t("roleAdmin")}</option>
         </select>
-        <button type="submit">{t("createAccountButton")}</button>
+        <button type="submit" disabled={!organizationId || organizationLoadError}>{t("createAccountButton")}</button>
       </form>
 
       {users.map((u) => (
