@@ -15,6 +15,9 @@ import { prisma } from "../lib/prisma.js";
 import { t } from "../lib/i18n.js";
 import { bumpTokenVersion, invalidateTokenVersionCache } from "../lib/tokenVersion.js";
 import { clearMediaCookie } from "../lib/mediaAuth.js";
+import { isPublicRegistrationEnabled } from "../lib/publicRegistration.js";
+import { comparePasswordOrDummy, compareRecoveryPinOrDummy } from "../lib/credentialTiming.js";
+import { revokeAllUserSessions, revokeSession } from "../lib/sessionService.js";
 
 function newEmployeeNumber(): string {
   return `EMP-${randomBytes(5).toString("hex").toUpperCase()}`;
@@ -35,8 +38,9 @@ async function verifyRecoveryPin(user: {
   recoveryFailureCount: number;
   recoveryLockedUntil: Date | null;
 }, pin: string): Promise<boolean> {
+  const validPin = await compareRecoveryPinOrDummy(pin, user.recoveryPinHash);
   if (!user.recoveryPinHash || (user.recoveryLockedUntil && user.recoveryLockedUntil > new Date())) return false;
-  if (await bcrypt.compare(pin, user.recoveryPinHash)) {
+  if (validPin) {
     await prisma.user.update({
       where: { id: user.id },
       data: { recoveryFailureCount: 0, recoveryLockedUntil: null },
@@ -55,6 +59,8 @@ async function verifyRecoveryPin(user: {
 }
 
 export async function authRoutes(app: FastifyInstance) {
+  app.get("/registration-status", async () => ({ enabled: isPublicRegistrationEnabled() }));
+
   app.get("/bootstrap/status", async () => {
     const userCount = await prisma.user.count();
     return { needsBootstrap: userCount === 0 };
@@ -74,6 +80,9 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   app.post("/register", { config: { rateLimit: { max: 5, timeWindow: "1 hour" } } }, async (request, reply) => {
+    if (!isPublicRegistrationEnabled()) {
+      return reply.code(403).send({ error: "Account creation requires an administrator." });
+    }
     const parsed = registerSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { name, email, password, recoveryPin } = parsed.data;
@@ -93,9 +102,8 @@ export async function authRoutes(app: FastifyInstance) {
 
     const identifier = (parsed.data.identifier ?? parsed.data.email ?? "").trim();
     const user = await prisma.user.findFirst({ where: { OR: [{ email: identifier.toLowerCase() }, { employeeNumber: identifier.toUpperCase() }] } });
-    if (!user || !user.isActive) return reply.code(401).send({ error: t("invalidCredentials", request.locale) });
-    const valid = await bcrypt.compare(parsed.data.password, user.passwordHash);
-    if (!valid) return reply.code(401).send({ error: t("invalidCredentials", request.locale) });
+    const valid = await comparePasswordOrDummy(parsed.data.password, user?.passwordHash);
+    if (!user || !user.isActive || !valid) return reply.code(401).send({ error: t("invalidCredentials", request.locale) });
 
     const purpose = user.mfaEnabled ? "mfa-login" : "mfa-setup";
     const challengeToken = app.jwt.sign({ sub: user.id, role: user.role, tv: user.tokenVersion, purpose }, { expiresIn: "10m" });
@@ -111,7 +119,7 @@ export async function authRoutes(app: FastifyInstance) {
     const parsed = recoverUserIdSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
-    if (!user || !user.isActive || !user.recoveryPinHash) return reply.code(401).send({ error: "We could not verify that account." });
+    if (!user || !user.isActive || !user.recoveryPinHash) { await compareRecoveryPinOrDummy(parsed.data.recoveryPin); return reply.code(401).send({ error: "We could not verify that account." }); }
     const valid = await verifyRecoveryPin(user, parsed.data.recoveryPin);
     if (!valid) return reply.code(401).send({ error: "We could not verify that account." });
     return { employeeNumber: user.employeeNumber, email: user.email };
@@ -122,22 +130,25 @@ export async function authRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const identifier = parsed.data.identifier.trim();
     const user = await prisma.user.findFirst({ where: { OR: [{ email: identifier.toLowerCase() }, { employeeNumber: identifier.toUpperCase() }] } });
-    if (!user || !user.isActive || !user.recoveryPinHash) return reply.code(401).send({ error: "We could not verify that account." });
+    if (!user || !user.isActive || !user.recoveryPinHash) { await compareRecoveryPinOrDummy(parsed.data.recoveryPin); return reply.code(401).send({ error: "We could not verify that account." }); }
     const valid = await verifyRecoveryPin(user, parsed.data.recoveryPin);
     if (!valid) return reply.code(401).send({ error: "We could not verify that account." });
     const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
     await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
     await bumpTokenVersion(user.id);
+    await revokeAllUserSessions(user.id);
     return { ok: true };
   });
 
-  app.post("/logout", { preHandler: [app.authenticate] }, async (_request, reply) => {
+  app.post("/logout", { preHandler: [app.authenticate] }, async (request, reply) => {
+    await revokeSession(request.user.sid!);
     clearMediaCookie(reply);
     return reply.code(204).send();
   });
 
   app.post("/logout-all", { preHandler: [app.authenticate] }, async (request, reply) => {
     await bumpTokenVersion(request.user.sub);
+    await revokeAllUserSessions(request.user.sub);
     clearMediaCookie(reply);
     return reply.code(204).send();
   });
@@ -157,12 +168,21 @@ export async function authRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
     const { name, email, password, role } = parsed.data;
     const [passwordHash, employeeNumber] = await Promise.all([bcrypt.hash(password, 10), createEmployeeNumber()]);
-    const user = await prisma.user.create({ data: { name, email, employeeNumber, passwordHash, role } });
+    const adminMemberships = await prisma.organizationMembership.findMany({ where: { userId: request.user.sub, isActive: true, organization: { isActive: true } }, select: { organizationId: true, organization: { select: { sites: { where: { isActive: true }, select: { id: true } } } } } });
+    if (adminMemberships.length === 0) return reply.code(409).send({ error: "Administrator must belong to an active organization before creating employees." });
+    const user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({ data: { name, email, employeeNumber, passwordHash, role } });
+      for (const membership of adminMemberships) {
+        await tx.organizationMembership.create({ data: { organizationId: membership.organizationId, userId: created.id, role: role === "ADMIN" ? "ADMIN" : "VIEWER" } });
+        for (const site of membership.organization.sites) await tx.siteMembership.create({ data: { siteId: site.id, userId: created.id } });
+      }
+      return created;
+    });
     return reply.code(201).send({ id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, isActive: user.isActive });
   });
 
-  app.get("/users", { preHandler: [app.authenticate, app.requireAdmin] }, async () => {
-    return prisma.user.findMany({ select: { id: true, name: true, email: true, employeeNumber: true, role: true, jobTitle: true, isActive: true, mfaEnabled: true }, orderBy: { createdAt: "asc" } });
+  app.get("/users", { preHandler: [app.authenticate, app.requireAdmin] }, async (request) => {
+    return prisma.user.findMany({ where: { OR: [{ id: request.user.sub }, { organizationMemberships: { some: { isActive: true, organization: { memberships: { some: { userId: request.user.sub, isActive: true } } } } } }] }, select: { id: true, name: true, email: true, employeeNumber: true, role: true, jobTitle: true, isActive: true, mfaEnabled: true }, orderBy: { createdAt: "asc" } });
   });
 
   app.delete("/users/:id", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
@@ -173,6 +193,7 @@ export async function authRoutes(app: FastifyInstance) {
     await prisma.user.update({ where: { id }, data: { isActive: false } });
     await prisma.organizationMembership.updateMany({ where: { userId: id }, data: { isActive: false } });
     await bumpTokenVersion(id);
+    await revokeAllUserSessions(id);
     return reply.code(204).send();
   });
 
@@ -185,15 +206,21 @@ export async function authRoutes(app: FastifyInstance) {
     const passwordHash = await bcrypt.hash(temporaryPassword, 10);
     await prisma.user.update({ where: { id }, data: { passwordHash } });
     await bumpTokenVersion(id);
+    await revokeAllUserSessions(id);
     return { id: target.id, email: target.email, name: target.name, temporaryPassword };
   });
 
   app.post("/users/:id/reset-mfa", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
     const { id } = request.params as { id: string };
+    if (id === request.user.sub) return reply.code(400).send({ error: "Administrators cannot reset their own authenticator here." });
     const target = await prisma.user.findUnique({ where: { id }, select: { id: true } });
     if (!target) return reply.code(404).send({ error: t("userNotFound", request.locale) });
-    await prisma.user.update({ where: { id }, data: { mfaEnabled: false, mfaSecretEncrypted: null, mfaBackupCodeHashes: Prisma.DbNull } });
+    const sharedOrganization = await prisma.organizationMembership.findFirst({ where: { userId: request.user.sub, isActive: true, organization: { memberships: { some: { userId: id, isActive: true } } } }, select: { id: true } });
+    if (!sharedOrganization) return reply.code(404).send({ error: t("userNotFound", request.locale) });
+    await prisma.user.update({ where: { id }, data: { mfaEnabled: false, mfaSecretEncrypted: null, mfaBackupCodeHashes: Prisma.DbNull, mfaLastTotpCounter: null } });
     await bumpTokenVersion(id);
+    await revokeAllUserSessions(id);
+    await prisma.securityAuditEvent.create({ data: { actorUserId: request.user.sub, targetUserId: id, action: "ADMIN_MFA_RESET" } });
     return { ok: true };
   });
 
@@ -214,7 +241,7 @@ export async function authRoutes(app: FastifyInstance) {
       updateData.passwordHash = await bcrypt.hash(newPassword, 10);
     }
     const user = await prisma.user.update({ where: { id: userId }, data: updateData });
-    if (newPassword) { await bumpTokenVersion(userId); clearMediaCookie(reply); } else invalidateTokenVersionCache(userId);
+    if (newPassword) { await bumpTokenVersion(userId); await revokeAllUserSessions(userId); clearMediaCookie(reply); } else invalidateTokenVersionCache(userId);
     return { id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, jobTitle: user.jobTitle, mfaEnabled: user.mfaEnabled };
   });
 }
