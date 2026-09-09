@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import type { Prisma } from "@prisma/client";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import {
@@ -70,6 +71,37 @@ async function createEmployeeNumber(): Promise<string> {
     if (!exists) return candidate;
   }
   throw new Error("Unable to allocate a unique employee number.");
+}
+
+function organizationScopedAdminUserWhere(adminUserId: string): Prisma.UserWhereInput {
+  return {
+    organizationMemberships: {
+      some: {
+        isActive: true,
+        organization: {
+          isActive: true,
+          memberships: {
+            some: { userId: adminUserId, isActive: true, role: { in: ["OWNER", "ADMIN"] } },
+          },
+        },
+      },
+      none: {
+        isActive: true,
+        organization: {
+          isActive: true,
+          memberships: {
+            none: { userId: adminUserId, isActive: true, role: { in: ["OWNER", "ADMIN"] } },
+          },
+        },
+      },
+    },
+  };
+}
+
+async function findOrganizationScopedAdminTarget(adminUserId: string, targetUserId: string) {
+  return prisma.user.findFirst({
+    where: { id: targetUserId, ...organizationScopedAdminUserWhere(adminUserId) },
+  });
 }
 
 export async function authRoutes(app: FastifyInstance) {
@@ -322,8 +354,9 @@ export async function authRoutes(app: FastifyInstance) {
     return reply.code(201).send({ id: user.id, name: user.name, email: user.email, employeeNumber: user.employeeNumber, role: user.role, isActive: user.isActive });
   });
 
-  app.get("/users", { preHandler: [app.authenticate, app.requireAdmin] }, async () => {
+  app.get("/users", { preHandler: [app.authenticate, app.requireAdmin] }, async (request) => {
     const users = await prisma.user.findMany({
+      where: organizationScopedAdminUserWhere(request.user.sub),
       select: {
         id: true, name: true, email: true, employeeNumber: true, role: true,
         jobTitle: true, isActive: true, mfaEnabled: true, phoneVerifiedAt: true,
@@ -336,7 +369,7 @@ export async function authRoutes(app: FastifyInstance) {
   app.delete("/users/:id", { preHandler: [app.authenticate, app.requireAdmin] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     if (id === request.user.sub) return reply.code(400).send({ error: t("cannotDeleteSelf", request.locale) });
-    const target = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+    const target = await findOrganizationScopedAdminTarget(request.user.sub, id);
     if (!target) return reply.code(404).send({ error: t("userNotFound", request.locale) });
     await prisma.user.update({
       where: { id },

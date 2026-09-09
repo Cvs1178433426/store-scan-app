@@ -289,6 +289,30 @@ describe("SMS-first MFA HTTP routes", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual([expect.objectContaining({ id: "user-2", phoneVerified: true })]);
     expect(response.json()[0]).not.toHaveProperty("phoneVerifiedAt");
+    expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        organizationMemberships: {
+          some: {
+            isActive: true,
+            organization: {
+              isActive: true,
+              memberships: {
+                some: { userId: "user-1", isActive: true, role: { in: ["OWNER", "ADMIN"] } },
+              },
+            },
+          },
+          none: {
+            isActive: true,
+            organization: {
+              isActive: true,
+              memberships: {
+                none: { userId: "user-1", isActive: true, role: { in: ["OWNER", "ADMIN"] } },
+              },
+            },
+          },
+        },
+      },
+    }));
     await server.close();
   });
 
@@ -1035,7 +1059,7 @@ describe("SMS-first MFA HTTP routes", () => {
   });
 
   it("atomically disables an account and invalidates its old access version", async () => {
-    mocks.findUnique.mockResolvedValue({ id: "user-2" });
+    mocks.findFirst.mockResolvedValue({ id: "user-2" });
     mocks.update.mockResolvedValue({ id: "user-2", tokenVersion: 4 });
     mocks.updateMany.mockResolvedValue({ count: 1 });
     const server = await app();
@@ -1057,6 +1081,43 @@ describe("SMS-first MFA HTTP routes", () => {
 
     mocks.findUnique.mockResolvedValue({ tokenVersion: 4, isActive: false, accountStatus: "DISABLED" });
     await expect(isCurrentActiveAccess("user-2", 3)).resolves.toBe(false);
+    await server.close();
+  });
+
+  it("does not disable a user unless the administrator manages every active target organization", async () => {
+    mocks.findFirst.mockResolvedValue(null);
+    const server = await app();
+
+    const response = await server.inject({ method: "DELETE", url: "/api/auth/users/foreign-user" });
+
+    expect(response.statusCode).toBe(404);
+    expect(mocks.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        id: "foreign-user",
+        organizationMemberships: {
+          some: {
+            isActive: true,
+            organization: {
+              isActive: true,
+              memberships: {
+                some: { userId: "user-1", isActive: true, role: { in: ["OWNER", "ADMIN"] } },
+              },
+            },
+          },
+          none: {
+            isActive: true,
+            organization: {
+              isActive: true,
+              memberships: {
+                none: { userId: "user-1", isActive: true, role: { in: ["OWNER", "ADMIN"] } },
+              },
+            },
+          },
+        },
+      },
+    }));
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
     await server.close();
   });
 
