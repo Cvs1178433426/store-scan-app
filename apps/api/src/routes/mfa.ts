@@ -1,5 +1,4 @@
 import type { FastifyInstance } from "fastify";
-import QRCode from "qrcode";
 import { prisma } from "../lib/prisma.js";
 import { setMediaCookie } from "../lib/mediaAuth.js";
 import {
@@ -9,7 +8,6 @@ import {
   generateBackupCodes,
   generateTotpSecret,
   hashBackupCodes,
-  otpauthUri,
   findTotpCounter,
 } from "../lib/mfa.js";
 import { createUserSession } from "../lib/sessionService.js";
@@ -56,9 +54,7 @@ export async function mfaRoutes(app: FastifyInstance) {
       secret = generateTotpSecret();
     }
     await prisma.user.update({ where: { id: user.id }, data: { mfaSecretEncrypted: encryptSecret(secret), mfaEnabled: false } });
-    const uri = otpauthUri(secret, user.employeeNumber || user.email);
-    const qrDataUrl = await QRCode.toDataURL(uri, { width: 240, margin: 1 });
-    return { qrDataUrl, secret, account: user.employeeNumber || user.email };
+    return { secret, account: user.employeeNumber || user.email };
   });
 
   app.post("/mfa/confirm", { config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } }, async (request, reply) => {

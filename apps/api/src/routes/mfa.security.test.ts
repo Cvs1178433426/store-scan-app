@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   updateMany: vi.fn(),
   update: vi.fn(),
   session: vi.fn(),
+  qr: vi.fn(async () => "data:image/png;base64,test"),
 }));
 
 vi.mock("../lib/prisma.js", () => ({ prisma: { user: {
@@ -27,7 +28,7 @@ vi.mock("../lib/mfa.js", () => ({
   otpauthUri: vi.fn(() => "otpauth://totp/test"),
   findTotpCounter: vi.fn(() => 100n),
 }));
-vi.mock("qrcode", () => ({ default: { toDataURL: vi.fn(async () => "data:image/png;base64,test") } }));
+vi.mock("qrcode", () => ({ default: { toDataURL: mocks.qr } }));
 
 import { mfaRoutes } from "./mfa.js";
 
@@ -46,7 +47,7 @@ function challenge(instance: Awaited<ReturnType<typeof app>>, purpose: "mfa-setu
 describe("MFA replay controls", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    Object.assign(mocks.user, { tokenVersion: 1, mfaEnabled: true, mfaLastTotpCounter: null });
+    Object.assign(mocks.user, { tokenVersion: 1, mfaEnabled: true, mfaSecretEncrypted: "encrypted", mfaBackupCodeHashes: [], mfaLastTotpCounter: null });
     mocks.session.mockResolvedValue({ id: "session-1" });
   });
 
@@ -55,6 +56,16 @@ describe("MFA replay controls", () => {
     const response = await instance.inject({ method: "POST", url: "/api/auth/mfa/setup", payload: { challengeToken: challenge(instance, "mfa-setup") } });
     expect(response.statusCode).toBe(409);
     expect(mocks.update).not.toHaveBeenCalled();
+    await instance.close();
+  });
+
+  it("returns only the manual authenticator key and never generates a QR code", async () => {
+    Object.assign(mocks.user, { mfaEnabled: false, mfaSecretEncrypted: null });
+    const instance = await app();
+    const response = await instance.inject({ method: "POST", url: "/api/auth/mfa/setup", payload: { challengeToken: challenge(instance, "mfa-setup") } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ secret: "SECRET", account: "EMP-1" });
+    expect(mocks.qr).not.toHaveBeenCalled();
     await instance.close();
   });
 
