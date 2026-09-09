@@ -1,12 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   consumeBackupCode,
+  consumeBackupCodeConstantWork,
   decryptSecret,
   encryptSecret,
   generateBackupCodes,
   generateTotpSecret,
   hashBackupCodes,
   verifyTotp,
+  verifyBackupCodeConstantWork,
   assertMfaEncryptionConfig,
 } from "./mfa.js";
 
@@ -37,6 +39,37 @@ describe("MFA helpers", () => {
     expect(first.remaining).toHaveLength(7);
     const second = await consumeBackupCode(codes[0], first.remaining);
     expect(second.valid).toBe(false);
+  });
+
+  it.each([
+    ["no stored codes", []],
+    ["one stored code", ["stored-1"]],
+    ["eight stored codes", Array.from({ length: 8 }, (_, index) => `stored-${index + 1}`)],
+  ])("uses exactly eight comparisons for %s", async (_label, hashes) => {
+    const compare = vi.fn(async () => false);
+
+    await expect(verifyBackupCodeConstantWork("WRONGCODE1", hashes, compare)).resolves.toBe(false);
+
+    expect(compare).toHaveBeenCalledTimes(8);
+  });
+
+  it("recognizes a matching backup code without short-circuiting the remaining comparisons", async () => {
+    const compare = vi.fn(async (_code: string, hash: string) => hash === "stored-2");
+
+    await expect(verifyBackupCodeConstantWork("VALIDCODE1", ["stored-1", "stored-2"], compare)).resolves.toBe(true);
+
+    expect(compare).toHaveBeenCalledTimes(8);
+  });
+
+  it("consumes a matching backup code only after all eight comparisons", async () => {
+    const compare = vi.fn(async (_code: string, hash: string) => hash === "stored-2");
+
+    await expect(consumeBackupCodeConstantWork("VALIDCODE1", ["stored-1", "stored-2"], compare)).resolves.toEqual({
+      valid: true,
+      remaining: ["stored-1"],
+    });
+
+    expect(compare).toHaveBeenCalledTimes(8);
   });
 
   it("rejects a missing or shared MFA encryption key in production", () => {

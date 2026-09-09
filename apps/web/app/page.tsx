@@ -1,15 +1,29 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { BrandLockup } from "../components/BrandLockup";
+import { HomeGlyph, type HomeGlyphName } from "../components/HomeGlyph";
 import { useAuth } from "../lib/auth-context";
+import styles from "./home.module.css";
 
-const launchers = [
-  { href: "/store-count", title: "Count", description: "Start or resume inventory counting" },
-  { href: "/my-work", title: "My Work", description: "See today's assigned work" },
-  { href: "/store-products", title: "Products", description: "Find and manage products" },
-  { href: "/store-locations", title: "Locations", description: "View store locations and zones" },
-] as const;
+const primaryLauncher = {
+  href: "/store-count",
+  title: "Start or resume Count",
+  description: "Scan items and record an accurate inventory count.",
+  glyph: "count",
+} as const;
+
+const secondaryLaunchers: ReadonlyArray<{
+  href: string;
+  title: string;
+  description: string;
+  glyph: HomeGlyphName;
+}> = [
+  { href: "/my-work", title: "My Work", description: "Review today's assigned work.", glyph: "work" },
+  { href: "/store-products", title: "Products", description: "Find and manage the product catalog.", glyph: "products" },
+  { href: "/store-locations", title: "Locations", description: "View stores, zones, aisles, and bins.", glyph: "locations" },
+];
 
 function daypart(hour: number) {
   if (hour < 12) return "morning";
@@ -22,10 +36,15 @@ export default function HomePage() {
 
   if (loading) {
     return (
-      <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
-        <section style={{ textAlign: "center" }}>
-          <BrandLockup />
-          <p style={{ color: "var(--color-text-muted)", marginTop: 18 }}>Connecting securely...</p>
+      <main className={styles.launchScreen}>
+        <section className={styles.launchPanel} aria-live="polite" aria-busy="true">
+          <div className={styles.launchMarkWrap}>
+            <Image className={styles.launchMark} src="/brand/continuixai-mark.svg" alt="" width={70} height={70} priority />
+          </div>
+          <p className={styles.launchName}>ContinuiXAi</p>
+          <p className={styles.launchTagline}>Start simple. Stay in control. Grow with confidence.</p>
+          <div className={styles.loadingRule} aria-hidden="true"><span /></div>
+          <p className={styles.loadingStatus}>Preparing your workspace</p>
         </section>
       </main>
     );
@@ -33,37 +52,64 @@ export default function HomePage() {
 
   if (!user) {
     return (
-      <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
-        <section style={{ width: "100%", maxWidth: 470, textAlign: "center", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: 22, padding: "36px 26px", boxShadow: "0 10px 30px rgba(0,0,0,0.08)" }}>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 26 }}><BrandLockup /></div>
-          <h1 style={{ fontSize: 30, lineHeight: 1.15, margin: "0 0 12px" }}>Welcome to ContinuiXai</h1>
-          <p style={{ color: "var(--color-text-secondary)", fontSize: 16, lineHeight: 1.5, margin: "0 0 26px" }}>Smarter store operations, inventory, and teamwork.</p>
-          <Link href="/login" className="button" style={{ minHeight: 50, display: "grid", placeItems: "center", textDecoration: "none", fontSize: 17 }}>Sign In</Link>
+      <main className={styles.welcomeScreen}>
+        <section className={styles.welcomeCard}>
+          <div className={styles.welcomeBrand}><BrandLockup /></div>
+          <div className={styles.welcomeEyebrow}>Retail operations, simplified</div>
+          <h1>Inventory confidence starts here.</h1>
+          <p className={styles.welcomeDescription}>Inventory, counting, and team operations—organized in one place.</p>
+          <Link href="/login" className={styles.signInAction}>
+            <span>Sign In</span>
+            <span aria-hidden="true">→</span>
+          </Link>
+          <p className={styles.welcomeAssurance}>Secure access for authorized team members</p>
         </section>
       </main>
     );
   }
 
   const firstName = user.name.trim().split(/\s+/)[0] || "there";
-  const greeting = `Good ${daypart(new Date().getHours())}, ${firstName} — ready to start working?`;
+  const greeting = `Good ${daypart(new Date().getHours())}, ${firstName}`;
 
   return (
-    <main style={{ maxWidth: 820, margin: "0 auto", padding: "32px 18px 110px" }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 34 }}>
-        <BrandLockup />
-        <button type="button" className="secondary" onClick={() => void logout()} style={{ width: "auto", minHeight: 42, padding: "8px 14px" }}>Sign Out</button>
+    <main className={styles.homeShell}>
+      <header className={styles.homeHeader}>
+        <BrandLockup compact />
+        <button type="button" className={styles.signOut} onClick={() => void logout()}>Sign Out</button>
       </header>
-      <section style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: "clamp(26px, 5vw, 38px)", lineHeight: 1.15, letterSpacing: "-0.025em", margin: "0 0 10px" }}>{greeting}</h1>
-        <p style={{ color: "var(--color-text-secondary)", fontSize: 16, margin: 0 }}>Choose where you want to work.</p>
+
+      <section className={styles.hero}>
+        <p className={styles.heroEyebrow}>Your operations workspace</p>
+        <h1>{greeting}</h1>
+        <p>Everything you need to keep work moving and inventory accurate.</p>
       </section>
-      <section aria-label="ContinuiXai applications" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
-        {launchers.map((launcher) => (
-          <Link key={launcher.href} href={launcher.href} style={{ minHeight: 150, display: "flex", flexDirection: "column", justifyContent: "center", padding: 24, border: "1px solid var(--color-border)", borderRadius: 20, background: "var(--color-surface)", boxShadow: "0 8px 24px rgba(0,0,0,0.06)", textDecoration: "none" }}>
-            <strong style={{ fontSize: 25, lineHeight: 1.2, color: "var(--color-text)" }}>{launcher.title}</strong>
-            <span style={{ marginTop: 9, fontSize: 15, lineHeight: 1.4, color: "var(--color-text-secondary)" }}>{launcher.description}</span>
-          </Link>
-        ))}
+
+      <section className={styles.actionSection} aria-labelledby="start-work-heading">
+        <h2 id="start-work-heading">Start working</h2>
+        <Link href={primaryLauncher.href} className={styles.primaryAction}>
+          <span className={styles.primaryGlyph}><HomeGlyph name={primaryLauncher.glyph} /></span>
+          <span className={styles.actionCopy}>
+            <strong>{primaryLauncher.title}</strong>
+            <span>{primaryLauncher.description}</span>
+          </span>
+          <span className={styles.actionArrow} aria-hidden="true">→</span>
+        </Link>
+      </section>
+
+      <section className={styles.actionSection} aria-labelledby="workspace-heading">
+        <h2 id="workspace-heading">Your workspace</h2>
+        <div className={styles.secondaryGrid}>
+          {secondaryLaunchers.map((launcher) => (
+            <Link key={launcher.href} href={launcher.href} className={styles.secondaryAction}>
+              <span className={styles.secondaryGlyph}><HomeGlyph name={launcher.glyph} /></span>
+              <span className={styles.actionCopy}>
+                <strong>{launcher.title}</strong>
+                <span>{launcher.description}</span>
+              </span>
+              <span className={styles.cardArrow} aria-hidden="true">→</span>
+            </Link>
+          ))}
+        </div>
       </section>
     </main>
   );

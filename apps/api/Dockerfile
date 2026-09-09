@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim AS base
+FROM node:24-bookworm-slim AS base
 WORKDIR /app
 # Prisma needs OpenSSL at runtime. Use Debian's package manager here instead of Alpine's apk
 # to avoid the container-start failure seen in Railway's build environment.
@@ -21,6 +21,8 @@ RUN npm run build -w apps/api
 
 FROM base AS runner
 ENV NODE_ENV=production
+ARG BUILD_SHA="unknown"
+ENV BUILD_SHA=$BUILD_SHA
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages/shared ./packages/shared
 COPY --from=build /app/apps/api/dist ./apps/api/dist

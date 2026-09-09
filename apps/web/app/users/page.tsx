@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiJson } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 import { useToast } from "../../lib/toast-context";
 import { useLocale } from "../../lib/i18n/locale-context";
 import type { User } from "../../lib/types";
-import { OneTimeSecrets, type OneTimeSecret } from "../../components/OneTimeSecrets";
+import { PhoneRecoveryAdmin } from "../../components/PhoneRecoveryAdmin";
 
 export default function UsersPage() {
   const router = useRouter();
@@ -15,11 +15,6 @@ export default function UsersPage() {
   const { show } = useToast();
   const { t } = useLocale();
   const [users, setUsers] = useState<User[]>([]);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"ADMIN" | "GENERAL">("GENERAL");
-  const [issuedSecrets, setIssuedSecrets] = useState<OneTimeSecret[] | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -34,24 +29,6 @@ export default function UsersPage() {
     if (isAdmin) refresh();
   }, [isAdmin]);
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    try {
-      await apiJson("/api/auth/users", {
-        method: "POST",
-        body: JSON.stringify({ name, email, password, role }),
-      });
-      setName("");
-      setEmail("");
-      setPassword("");
-      setRole("GENERAL");
-      await refresh();
-      show(t("accountCreatedToast"), "success");
-    } catch (err: any) {
-      show(err.message, "error");
-    }
-  }
-
   async function handleDelete(id: string) {
     if (!confirm(t("confirmDeleteAccount"))) return;
     try {
@@ -62,40 +39,14 @@ export default function UsersPage() {
     }
   }
 
-  async function handleResetPassword(u: User) {
-    if (!confirm(t("confirmResetPassword", { name: u.name }))) return;
-    try {
-      const res = await apiJson<{ email: string; temporaryPassword: string }>(
-        `/api/auth/users/${u.id}/reset-password`,
-        { method: "POST" },
-      );
-      setIssuedSecrets([{ label: res.email, value: res.temporaryPassword }]);
-    } catch (err: any) {
-      show(err.message, "error");
-    }
-  }
-
   if (loading || !user || !isAdmin) return null;
 
   return (
     <main className="container">
       <h1>{t("usersTitle")}</h1>
-      <form onSubmit={handleSubmit} className="form" style={{ marginBottom: 16 }}>
-        <input placeholder={t("namePlaceholder")} value={name} onChange={(e) => setName(e.target.value)} required />
-        <input type="email" placeholder={t("emailPlaceholder")} value={email} onChange={(e) => setEmail(e.target.value)} required />
-        <input
-          type="password"
-          placeholder={t("passwordMinPlaceholder")}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <select value={role} onChange={(e) => setRole(e.target.value as "ADMIN" | "GENERAL")}>
-          <option value="GENERAL">{t("roleGeneral")}</option>
-          <option value="ADMIN">{t("roleAdmin")}</option>
-        </select>
-        <button type="submit">{t("createAccountButton")}</button>
-      </form>
+      <section className="card" style={{ marginBottom: 16 }}>
+        <p>{t("userSelfRegistrationHelp")}</p>
+      </section>
 
       {users.map((u) => (
         <div key={u.id} className="tree-row">
@@ -104,26 +55,14 @@ export default function UsersPage() {
           </div>
           {u.id !== user.id && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button type="button" className="secondary" onClick={() => void handleResetPassword(u)}>
-                {t("resetPasswordButton")}
-              </button>
               <button type="button" className="secondary" onClick={() => void handleDelete(u.id)}>
                 {t("delete")}
               </button>
+              {u.phoneVerified && <PhoneRecoveryAdmin userId={u.id} userName={u.name} />}
             </div>
           )}
         </div>
       ))}
-
-      {issuedSecrets && (
-        <OneTimeSecrets
-          title={t("resetPasswordTitle")}
-          hint={t("resetPasswordHint")}
-          secrets={issuedSecrets}
-          downloadFilename={`continuixai-ops-reset-password_${issuedSecrets[0]?.label ?? "user"}.txt`}
-          onClose={() => setIssuedSecrets(null)}
-        />
-      )}
     </main>
   );
 }

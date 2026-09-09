@@ -9,6 +9,10 @@ export interface User {
   employeeNumber?: string | null;
   jobTitle?: JobTitle | null;
   taskManager?: boolean;
+  mfaEnabled?: boolean;
+  phoneVerified?: boolean;
+  phoneLast4?: string | null;
+  phoneEnrollmentRequired?: boolean;
 }
 
 export type BarcodeSymbology = "EAN13" | "UPCA" | "CODE128" | "QR" | "DATA_MATRIX" | "OTHER";
