@@ -163,6 +163,7 @@ model User {
   mfaSecretEncrypted  String?
   mfaEnabled          Boolean   @default(false)
   mfaBackupCodeHashes Json?
+  mfaLastTotpCounter  BigInt?
   role                UserRole  @default(GENERAL)
   isActive            Boolean   @default(true)
   tokenVersion        Int       @default(0)
@@ -184,10 +185,38 @@ model User {
   assignedTasks            TaskAssignment[]         @relation("TaskAssignedTo")
   completedTasks           TaskAssignment[]         @relation("TaskCompletedBy")
   taskAssignmentEvents     TaskAssignmentEvent[]    @relation("TaskAssignmentEventActor")
+  sessions                 UserSession[]
+  securityAuditEvents      SecurityAuditEvent[]      @relation("SecurityAuditActor")
 
   @@index([isActive])
   @@index([jobTitle, isActive])
   @@index([recoveryLockedUntil])
+}
+
+model UserSession {
+  id           String    @id @default(cuid())
+  userId       String
+  tokenVersion Int
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
+model SecurityAuditEvent {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  targetUserId String?
+  action      String
+  reason      String?
+  createdAt   DateTime @default(now())
+  actor       User?    @relation("SecurityAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([targetUserId, createdAt])
+  @@index([action, createdAt])
 }
 
 model Organization {
